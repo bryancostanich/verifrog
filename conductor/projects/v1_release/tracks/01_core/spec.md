@@ -1,0 +1,110 @@
+# Track 01: Core Framework
+
+## Objective
+
+Build Verifrog v1 — extract and generalize the khalkulo sim_debugger, VCD parser, and test runner into a standalone, design-agnostic framework. Ship with documentation, sample projects, and a clean API.
+
+## Source Material
+
+Porting from khalkulo (`/tools/sim_debugger/`, `/tools/vcd_parser/`). The khalkulo-specific code (SRAM backdoors, MAC register reads, CLI commands) stays in khalkulo. The generic core moves to Verifrog.
+
+## Deliverables
+
+### Verifrog.Sim (F# library)
+
+- [ ] `Sim` type: Create, Reset, Step, Read, Write, SignalBits, ListSignals
+- [ ] Checkpoint/Restore: SaveCheckpoint, RestoreCheckpoint (named snapshots)
+- [ ] Force/Release: hold signals at values, release
+- [ ] Signal validation: ValidateSignals checks all declared paths exist at startup
+- [ ] Memory access: `sim.Memory("name").Read(bank, addr)` / `.Write(bank, addr, value)` driven from TOML config
+- [ ] Register access: `sim.Register("NAME").Read()` / `.Write(value)` driven from TOML config
+- [ ] P/Invoke bindings to libverifrog_sim (extracted from khalkulo Interop.fs)
+- [ ] TOML config parser (reads `verifrog.toml`, builds memory/register maps)
+
+### libverifrog_sim (C shim)
+
+- [ ] Generic Verilator wrapper: sim_create, sim_destroy, sim_reset, sim_step
+- [ ] Signal access: sim_read, sim_write, sim_force, sim_release by hierarchical name
+- [ ] Signal enumeration: sim_signal_count, sim_signal_name, sim_signal_bits
+- [ ] Checkpoint: sim_checkpoint, sim_restore, sim_checkpoint_free
+- [ ] Display suppression: sim_suppress_display
+- [ ] No design-specific code — everything resolved by name at runtime
+- [ ] Extracted from khalkulo sim_shim.cpp, removing WgtWrite/ActWrite/MacRead etc.
+
+### Verifrog.Vcd (F# library)
+
+- [ ] VCD parser: parse multi-GB files efficiently
+- [ ] Signal query by name/pattern
+- [ ] Value-at-time lookup
+- [ ] Transition counting and timing analysis
+- [ ] Extracted from khalkulo vcd_parser, packaged as a library (not just a CLI)
+
+### Verifrog.Runner (F# library)
+
+- [ ] Verilator backend: creates Sim instances, manages fixtures, runs Expecto tests
+- [ ] iverilog backend: Iverilog module — compile, run vvp, capture stdout, parse pass/fail
+- [ ] iverilog auto-discovery: scan testbench directory from TOML config, generate test per file
+- [ ] Iverilog parameter override: pass Verilog parameters at compile time
+- [ ] SimFixture: create instance, reset, checkpoint Level 0. Restore per test.
+- [ ] Expect helpers: Expect.signal, Expect.memory, Expect.register with readable failure output
+- [ ] Parallel execution: separate Verilator instances per test list
+- [ ] `dotnet test` integration
+
+### verifrog CLI
+
+- [ ] `verifrog build` — reads `verifrog.toml`, runs Verilator on declared sources, compiles C shim, links shared library into `[test].output` directory
+- [ ] `verifrog clean` — remove build artifacts
+- [ ] `verifrog init` — scaffold a new project (create `verifrog.toml` template, sample test file)
+- [ ] F# dotnet tool, installable via `dotnet tool install`
+
+### Documentation
+
+- [ ] README.md: what Verifrog is, quick start, architecture overview
+- [ ] Getting Started guide: install deps, `verifrog init`, write first test, run it
+- [ ] API reference: Sim, Memory, Register, Checkpoint, Force, Expect helpers
+- [ ] Configuration reference: `verifrog.toml` format, all sections
+- [ ] Extension guide: how to build design-specific APIs on top of Verifrog
+- [ ] Architecture doc: how the layers connect (F# → P/Invoke → C shim → Verilator)
+
+### Sample Projects
+
+- [ ] **Minimal**: simple counter module, 3-4 tests demonstrating Sim basics (step, read, write, checkpoint)
+- [ ] **With registers**: ALU or small SoC with a register file, demonstrates register map access
+- [ ] **With memory**: design with SRAM, demonstrates memory region access
+- [ ] **With iverilog**: design with a Verilog testbench (BFM, timing), demonstrates dual-backend runner
+- [ ] Each sample includes its own `verifrog.toml`, test project, and README
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│  User's Test Project (Expecto)                   │
+│  - Design-specific extensions (optional)         │
+│  - Test functions using Verifrog API             │
+├─────────────────────────────────────────────────┤
+│  Verifrog.Runner                                 │
+│  - Verilator backend (SimFixture, checkpoints)   │
+│  - iverilog backend (compile/run/parse)          │
+│  - Expect helpers                                │
+├─────────────────────────────────────────────────┤
+│  Verifrog.Sim              Verifrog.Vcd          │
+│  - Sim type                - VCD parser          │
+│  - Memory/Register access  - Signal query        │
+│  - P/Invoke                - Timing analysis     │
+├─────────────────────────────────────────────────┤
+│  libverifrog_sim.dylib/.so                       │
+│  - Generic Verilator C wrapper                   │
+│  - Built per-design via `verifrog build`         │
+├─────────────────────────────────────────────────┤
+│  Verilator (user's compiled RTL)                 │
+└─────────────────────────────────────────────────┘
+```
+
+## Non-Goals for v1
+
+- NuGet package distribution (clone-and-reference for v1, package later)
+- Windows support (macOS and Linux only — Verilator doesn't have great Windows support anyway)
+- SystemVerilog design support (Verilator handles the synthesizable subset, but we don't test or document it)
+- Constrained random generation
+- Fault injection framework (users can do this with Force/Release, but no structured campaign runner)
+- GUI / waveform viewer integration

@@ -1,0 +1,16 @@
+# .NET build artifacts
+bin/
+obj/
+
+# Verilator build artifacts
+samples/*/build/
+scratch/
+
+# IDE
+.vs/
+.vscode/
+*.user
+*.suo
+
+# macOS
+.DS_Store

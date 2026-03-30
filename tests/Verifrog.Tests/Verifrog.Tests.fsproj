@@ -9,12 +9,14 @@
   <ItemGroup>
     <Compile Include="SimTests.fs" />
     <Compile Include="VcdTests.fs" />
+    <Compile Include="RunnerTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="../../src/Verifrog.Sim/Verifrog.Sim.fsproj" />
     <ProjectReference Include="../../src/Verifrog.Vcd/Verifrog.Vcd.fsproj" />
+    <ProjectReference Include="../../src/Verifrog.Runner/Verifrog.Runner.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

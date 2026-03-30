@@ -1,0 +1,9 @@
+[design]
+top = "counter"
+sources = ["rtl/counter.v"]
+
+[verilator]
+flags = ["--trace"]
+
+[test]
+output = "build"

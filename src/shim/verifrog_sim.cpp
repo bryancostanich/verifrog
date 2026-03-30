@@ -158,12 +158,13 @@ static void register_signals(SimContext* ctx) {
     }
 }
 
-// Parse "name[index]" into base name and index. Returns true if indexed.
+// Parse trailing "[index]" from a name. Uses the LAST bracket pair,
+// so "gen_bank[0].u_bank.mem[5]" parses as base="gen_bank[0].u_bank.mem", index=5.
 static bool parse_array_index(const std::string& name, std::string& base, int& index) {
-    size_t bracket = name.find('[');
+    size_t close = name.rfind(']');
+    if (close == std::string::npos || close != name.size() - 1) return false;
+    size_t bracket = name.rfind('[', close);
     if (bracket == std::string::npos) return false;
-    size_t close = name.find(']', bracket);
-    if (close == std::string::npos) return false;
     base = name.substr(0, bracket);
     index = std::stoi(name.substr(bracket + 1, close - bracket - 1));
     return true;

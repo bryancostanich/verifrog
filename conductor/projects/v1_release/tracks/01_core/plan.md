@@ -95,9 +95,11 @@ Port khalkulo to consume Verifrog as a dependency.
 - [x] Establish baseline: 116 passed, 14 skipped, 20 failed (150 total)
 - [x] Update all 16 test files to import from Verifrog + extension layer
 - [x] Verify results match baseline: **116 passed, 14 skipped, 20 failed**
-- [ ] Remove internal sim_debugger from khalkulo (deferred to manual cutover)
-- [ ] Remove internal vcd_parser from khalkulo (deferred to manual cutover)
+- [ ] Port sim_debugger CLI to Verifrog (generic REPL + khalkulo-specific commands as extension)
+- [ ] Port vcd_parser CLI to Verifrog.Vcd (thin CLI wrapper around the library)
 - [ ] Update khalkulo docs/development.md to reference Verifrog
+- [ ] Remove internal sim_debugger from khalkulo (after CLI ported)
+- [ ] Remove internal vcd_parser from khalkulo (after CLI ported)
 
 **Architecture:** Extension layer is pure module functions taking `Verifrog.Sim.Sim`. No wrapper types. Dependency flows one direction: khalkulo → Verifrog, never the reverse.
 

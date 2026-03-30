@@ -3,7 +3,9 @@ module Verifrog.Cli.Program
 open System
 open System.Diagnostics
 open System.IO
+open Verifrog.Sim
 open Verifrog.Sim.Config
+open Verifrog.Cli.Debugger
 
 // ---- Helpers ----
 
@@ -210,25 +212,83 @@ let private doClean (projectDir: string) =
         printfn "Nothing to clean (build dir does not exist)"
     0
 
+// ---- Debug command ----
+
+let private doDebug (projectDir: string) (scriptPath: string option) =
+    let dir = Path.GetFullPath(projectDir)
+    let tomlPath =
+        match findToml dir with
+        | Some p -> p
+        | None ->
+            eprintfn "verifrog.toml not found (searched up from %s)" dir
+            eprintfn "Run 'verifrog init' to create one, then 'verifrog build'."
+            exit 1
+
+    let config = parse tomlPath
+    let projectRoot = Path.GetDirectoryName(tomlPath)
+    let buildDir = Path.Combine(projectRoot, config.Test.Output)
+    let libName = if OperatingSystem.IsMacOS() then "libverifrog_sim.dylib" else "libverifrog_sim.so"
+    let libPath = Path.Combine(buildDir, libName)
+
+    if not (File.Exists(libPath)) then
+        eprintfn "Sim library not found: %s" libPath
+        eprintfn "Run 'verifrog build' first."
+        exit 1
+
+    // Set the native library path so the sim can find it
+    Environment.SetEnvironmentVariable("VERIFROG_SIM_LIB", libPath)
+
+    use sim = Sim.Create(config)
+    sim.Reset()
+
+    match scriptPath with
+    | Some path -> runScript sim [] path
+    | None -> runInteractive sim []
+    0
+
 // ---- Entry point ----
 
 [<EntryPoint>]
 let main argv =
     if argv.Length = 0 then
-        printfn "verifrog — Verilog testing framework"
+        printfn "verifrog -- Verilog testing framework"
         printfn ""
         printfn "Commands:"
-        printfn "  init [dir]   Scaffold a new verifrog project"
-        printfn "  build [dir]  Build Verilator model from verifrog.toml"
-        printfn "  clean [dir]  Remove build artifacts"
+        printfn "  init [dir]          Scaffold a new verifrog project"
+        printfn "  build [dir]         Build Verilator model from verifrog.toml"
+        printfn "  clean [dir]         Remove build artifacts"
+        printfn "  debug [dir]         Interactive simulation debugger"
+        printfn "  debug --script <f>  Run debugger script"
         0
     else
         let cmd = argv.[0]
-        let dir = if argv.Length > 1 then argv.[1] else "."
+        let rest = argv.[1..]
         match cmd with
-        | "init"  -> doInit dir
-        | "build" -> doBuild dir
-        | "clean" -> doClean dir
+        | "init"  ->
+            let dir = if rest.Length > 0 then rest.[0] else "."
+            doInit dir
+        | "build" ->
+            let dir = if rest.Length > 0 then rest.[0] else "."
+            doBuild dir
+        | "clean" ->
+            let dir = if rest.Length > 0 then rest.[0] else "."
+            doClean dir
+        | "debug" ->
+            // Parse debug args: [dir] [--script <path>]
+            let mutable dir = "."
+            let mutable script = None
+            let mutable i = 0
+            while i < rest.Length do
+                match rest.[i] with
+                | "--script" when i + 1 < rest.Length ->
+                    script <- Some rest.[i + 1]
+                    i <- i + 2
+                | arg when not (arg.StartsWith("--")) && i = 0 ->
+                    dir <- arg
+                    i <- i + 1
+                | _ ->
+                    i <- i + 1
+            doDebug dir script
         | _ ->
             eprintfn "Unknown command: %s" cmd
             1

@@ -3,18 +3,17 @@
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net8.0</TargetFramework>
-    <RootNamespace>Verifrog.Cli</RootNamespace>
+    <RootNamespace>Verifrog.Vcd.Cli</RootNamespace>
     <PackAsTool>true</PackAsTool>
-    <ToolCommandName>verifrog</ToolCommandName>
+    <ToolCommandName>verifrog-vcd</ToolCommandName>
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Debugger.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="../Verifrog.Sim/Verifrog.Sim.fsproj" />
+    <ProjectReference Include="../Verifrog.Vcd/Verifrog.Vcd.fsproj" />
   </ItemGroup>
 
 </Project>

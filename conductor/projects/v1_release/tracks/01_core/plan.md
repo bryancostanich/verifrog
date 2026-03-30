@@ -98,8 +98,8 @@ Port khalkulo to consume Verifrog as a dependency.
 - [x] Port sim_debugger CLI to Verifrog (generic REPL in Debugger.fs + khalkulo KhalkuloCli.fs extension)
 - [x] Port vcd_parser CLI to Verifrog.Vcd.Cli (standalone tool, no design-specific code)
 - [x] Update khalkulo docs/development.md to reference Verifrog
-- [ ] Remove internal sim_debugger from khalkulo
-- [ ] Remove internal vcd_parser from khalkulo
+- [x] Remove internal sim_debugger from khalkulo (3,727 lines deleted, all doc refs updated)
+- [x] Remove internal vcd_parser from khalkulo
 
 **Architecture:** Extension layer is pure module functions taking `Verifrog.Sim.Sim`. No wrapper types. Dependency flows one direction: khalkulo → Verifrog, never the reverse.
 

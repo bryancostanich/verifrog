@@ -1,0 +1,23 @@
+[design]
+top = "i2c_regs"
+sources = ["rtl/i2c_regs.v"]
+
+[verilator]
+flags = ["--trace"]
+
+[iverilog]
+testbenches = ["sim/*_tb.v"]
+models = ["sim/i2c_master_bfm.v"]
+
+[test]
+output = "build"
+
+[registers]
+path = "regs"
+width = 8
+
+[registers.map]
+REG0 = 0
+REG1 = 1
+REG2 = 2
+REG3 = 3

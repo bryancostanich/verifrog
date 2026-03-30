@@ -68,9 +68,7 @@ Each sample is self-contained with its own verifrog.toml, .fsproj, README.
 - [x] **With registers** (ALU + register file): register map in TOML, named access, parametric sweeps
 - [x] **With memory** (small SRAM design): memory regions in TOML, bank/addr access, backdoor loading
 - [x] **With iverilog** (design + BFM testbench): dual-backend, timing-accurate test alongside Verilator tests, auto-discovery
-- [ ] **With I2C BFM** (from khalkulo): ship the I2C BFM as an example of protocol-level testbench integration with the iverilog backend
-
-**Note:** I2C BFM sample deferred — requires copying BFM source from khalkulo, needs to be done carefully.
+- [x] **With I2C BFM** (from khalkulo): reusable I2C master BFM with protocol tasks, testbench demonstrating START/STOP/write/read/error handling
 
 ## Phase 7: Documentation ✅
 

@@ -51,6 +51,7 @@ struct SignalInfo {
     void* ptr;
     int bits;
     bool is_signed;
+    const VerilatedVar* var;  // non-null for array vars (needed for indexed access)
 };
 
 // Force override entry
@@ -138,20 +139,68 @@ static void register_signals(SimContext* ctx) {
 
             bool is_signed = var_ptr.isSigned();
 
+            // Store pointer to the VerilatedVar for array indexing support
+            const VerilatedVar* varp = &var_ptr;
+
             // Register with user-friendly name: "count", "u_sub.state", etc.
             // Don't override existing entries — the TOP scope's ports take
             // priority over sub-module internal copies (which Verilator
             // overwrites from ports during eval).
             std::string friendly_name = scope_prefix + std::string(var_name);
             if (m.find(friendly_name) == m.end()) {
-                m[friendly_name] = { datap, bits, is_signed };
+                m[friendly_name] = { datap, bits, is_signed, varp };
             }
 
             // Also register with full path for explicit access
             std::string full_name = scope_str + "." + std::string(var_name);
-            m[full_name] = { datap, bits, is_signed };
+            m[full_name] = { datap, bits, is_signed, varp };
         }
     }
+}
+
+// Parse "name[index]" into base name and index. Returns true if indexed.
+static bool parse_array_index(const std::string& name, std::string& base, int& index) {
+    size_t bracket = name.find('[');
+    if (bracket == std::string::npos) return false;
+    size_t close = name.find(']', bracket);
+    if (close == std::string::npos) return false;
+    base = name.substr(0, bracket);
+    index = std::stoi(name.substr(bracket + 1, close - bracket - 1));
+    return true;
+}
+
+// Resolve a signal name, supporting array indexing (e.g., "regs[42]").
+// For plain names, looks up directly in the signal map.
+// For indexed names, finds the base array var and computes the element pointer.
+static bool resolve_signal(SimContext* ctx, const char* name, SignalInfo& out) {
+    // Try direct lookup first
+    auto it = ctx->signals.find(name);
+    if (it != ctx->signals.end()) {
+        out = it->second;
+        return true;
+    }
+
+    // Try array indexing: "base_name[index]"
+    std::string sname(name);
+    std::string base;
+    int index;
+    if (parse_array_index(sname, base, index)) {
+        auto base_it = ctx->signals.find(base);
+        if (base_it != ctx->signals.end() && base_it->second.var) {
+            const SignalInfo& base_sig = base_it->second;
+            // Use VerilatedVar::datapAdjustIndex to get the element pointer.
+            // DPI convention: dim=1 is the first unpacked dimension.
+            // dim=0 is reserved for the packed dimension.
+            void* elem_ptr = base_sig.var->datapAdjustIndex(
+                base_sig.ptr, 1, index);
+            if (elem_ptr) {
+                out = { elem_ptr, base_sig.bits, base_sig.is_signed, base_sig.var };
+                return true;
+            }
+        }
+    }
+
+    return false;
 }
 
 // Read a signal value through its direct pointer
@@ -268,25 +317,27 @@ uint64_t sim_get_cycle(SimContext* ctx) {
     return ctx ? ctx->cycle_count : 0;
 }
 
-// Read a signal by hierarchical name. Returns 0 on success, -1 on error.
+// Read a signal by hierarchical name. Supports array indexing: "regs[42]".
+// Returns 0 on success, -1 on error.
 int sim_read(SimContext* ctx, const char* name, int64_t* out_value) {
     if (!ctx || !name || !out_value) return -1;
 
-    auto it = ctx->signals.find(name);
-    if (it == ctx->signals.end()) return -1;
+    SignalInfo sig;
+    if (!resolve_signal(ctx, name, sig)) return -1;
 
-    *out_value = read_signal(it->second);
+    *out_value = read_signal(sig);
     return 0;
 }
 
-// Write a signal by hierarchical name. Returns 0 on success, -1 on error.
+// Write a signal by hierarchical name. Supports array indexing: "regs[42]".
+// Returns 0 on success, -1 on error.
 int sim_write(SimContext* ctx, const char* name, int64_t value) {
     if (!ctx || !name) return -1;
 
-    auto it = ctx->signals.find(name);
-    if (it == ctx->signals.end()) return -1;
+    SignalInfo sig;
+    if (!resolve_signal(ctx, name, sig)) return -1;
 
-    write_signal(it->second, value);
+    write_signal(sig, value);
     eval_model(ctx);
     return 0;
 }
@@ -294,8 +345,9 @@ int sim_write(SimContext* ctx, const char* name, int64_t value) {
 // Get signal bit width. Returns -1 if not found.
 int sim_signal_bits(SimContext* ctx, const char* name) {
     if (!ctx || !name) return -1;
-    auto it = ctx->signals.find(name);
-    return (it != ctx->signals.end()) ? it->second.bits : -1;
+    SignalInfo sig;
+    if (!resolve_signal(ctx, name, sig)) return -1;
+    return sig.bits;
 }
 
 // Total number of registered signals (unique by friendly name)
@@ -362,13 +414,13 @@ uint64_t sim_checkpoint_cycle(Checkpoint* cp) {
 int sim_force(SimContext* ctx, const char* name, int64_t value) {
     if (!ctx || !name) return -1;
 
-    auto it = ctx->signals.find(name);
-    if (it == ctx->signals.end()) return -1;
+    SignalInfo sig;
+    if (!resolve_signal(ctx, name, sig)) return -1;
 
     ctx->forces[name] = value;
 
     // Apply immediately
-    write_signal(it->second, value);
+    write_signal(sig, value);
     eval_model(ctx);
     return 0;
 }

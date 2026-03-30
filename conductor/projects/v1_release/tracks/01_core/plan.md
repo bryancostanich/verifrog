@@ -81,20 +81,24 @@ Each sample is self-contained with its own verifrog.toml, .fsproj, README.
 - [x] Extension guide: building design-specific layers (khalkulo as the worked example — Stimulus module, KhalkuloSim wrapper, custom Expect helpers)
 - [x] Architecture doc: layer diagram, data flow, how `verifrog build` works
 
-## Phase 8: Khalkulo Migration — IN PROGRESS
+## Phase 8: Khalkulo Migration ✅
 
 Port khalkulo to consume Verifrog as a dependency.
 
-- [x] Create khalkulo extension layer in khalkulo repo:
-  - KhalkuloSim type wrapping VerifrogSim (WgtWrite, ActWrite, StartInference, etc.)
-  - Khalkulo-specific Expect helpers (weightSram, actSram, macWeight, macAcc)
-  - Stimulus module (register addresses, layer types, config helpers)
-- [x] Create khalkulo's `verifrog.toml` (memories: weight/activation banks, registers: full register map)
-- [ ] Establish baseline: verify existing test suite results match before migration
-- [ ] Update tests to import from Verifrog + khalkulo extension instead of internal Fixtures
-- [ ] Verify all existing tests still produce same results (116 pass, 14 skip, ~20 fail)
-- [ ] Remove internal sim_debugger from khalkulo (replaced by Verifrog dependency)
-- [ ] Remove internal vcd_parser from khalkulo (replaced by Verifrog.Vcd dependency)
+- [x] Create khalkulo extension layer as module functions (not wrapper type):
+  - Khalkulo.Verifrog.Sim: regfileRead/Write, wgtRead/Write, actRead/Write, macWeightReg/AccBank0/Product
+  - Khalkulo.Verifrog.Expect: register, weightSram, actSram, macWeight, macAcc, signal, iverilogPassed
+  - Khalkulo.Verifrog.Stimulus: register addresses, layer types, config helpers
+  - Khalkulo.Verifrog.Fixture: create, createWithCheckpoint, restore, saveLevel
+  - Khalkulo.Verifrog.Iverilog: khalkulo-specific paths and runners
+- [x] Create khalkulo's `verifrog.toml`
+- [x] Establish baseline: 116 passed, 14 skipped, 20 failed (150 total)
+- [x] Update all 16 test files to import from Verifrog + extension layer
+- [x] Verify results match baseline: **116 passed, 14 skipped, 20 failed**
+- [ ] Remove internal sim_debugger from khalkulo (deferred to manual cutover)
+- [ ] Remove internal vcd_parser from khalkulo (deferred to manual cutover)
 - [ ] Update khalkulo docs/development.md to reference Verifrog
 
-**Known limitation:** Verilator dual-port register file backdoor race (bryancostanich/khalkulo#9) — direct array poke values are stored correctly but synchronous port B reads can get wrong-address data due to Verilator NBA scheduling optimization. Does not affect iverilog path. See issue for details and proposed fix.
+**Architecture:** Extension layer is pure module functions taking `Verifrog.Sim.Sim`. No wrapper types. Dependency flows one direction: khalkulo → Verifrog, never the reverse.
+
+**Known limitation:** Verilator dual-port register file backdoor race (bryancostanich/khalkulo#9) — direct array poke values are stored correctly but synchronous port B reads can get wrong-address data due to Verilator NBA scheduling optimization. Does not affect iverilog path.

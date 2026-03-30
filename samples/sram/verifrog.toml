@@ -1,0 +1,15 @@
+[design]
+top = "sram_top"
+sources = ["rtl/sram_top.v"]
+
+[verilator]
+flags = ["--trace"]
+
+[test]
+output = "build"
+
+[memories.data]
+path = "mem"
+banks = 1
+depth = 256
+width = 8

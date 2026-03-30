@@ -1,0 +1,13 @@
+[design]
+top = "shift_reg"
+sources = ["rtl/shift_reg.v"]
+
+[verilator]
+flags = ["--trace"]
+
+[iverilog]
+testbenches = ["sim/*_tb.v"]
+models = []
+
+[test]
+output = "build"

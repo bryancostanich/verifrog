@@ -6,7 +6,28 @@ Build Verifrog v1 — extract and generalize the khalkulo sim_debugger, VCD pars
 
 ## Source Material
 
-Porting from khalkulo (`/tools/sim_debugger/`, `/tools/vcd_parser/`). The khalkulo-specific code (SRAM backdoors, MAC register reads, CLI commands) stays in khalkulo. The generic core moves to Verifrog.
+Porting from three proven khalkulo implementations:
+
+| khalkulo source | Verifrog target | What moves | What stays in khalkulo |
+|---|---|---|---|
+| `tools/sim_debugger/` | Verifrog.Sim + C shim | Sim type, Interop.fs, generic sim_shim functions | WgtWrite, ActWrite, MacRead, CLI commands |
+| `tools/vcd_parser/` | Verifrog.Vcd | Parser core, signal query | CLI entry point (thin wrapper) |
+| `tests/Fixtures/` | Verifrog.Runner | SimFixture, Iverilog, generic Expect helpers | Expect.weightSram, macWeight, macAcc; all of Stimulus module |
+| `tests/` structure | Sample projects | Test organization patterns | All khalkulo-specific tests |
+
+The khalkulo test suite (150 tests) is the proof that these patterns work. Verifrog extracts the framework; khalkulo becomes a consumer of Verifrog with a design-specific extension layer.
+
+### Proven Patterns from khalkulo (already working)
+
+The following are battle-tested in khalkulo's 150-test suite and should be preserved in the extraction:
+
+**SimFixture** — checkpoint levels (PostReset → PostConfig → PostWeights → PostInference), create/restore lifecycle, display suppression. Currently khalkulo-hardcoded to `libkhalkulo_sim.dylib` path; generalize to read from `verifrog.toml`.
+
+**Iverilog backend** — compile/run/capture/parse flow, auto-discovery of `*_tb.v` files, parameter overrides (`-P tb.PARAM=value`), BFM auto-detection, timeout handling. Currently hardcoded to `source/rtl/` and `source/sim/` paths; generalize to read from `verifrog.toml`.
+
+**Expect helpers** — `Expect.signal`, `Expect.register` are generic and move to Verifrog. `Expect.weightSram`, `Expect.actSram`, `Expect.macWeight`, `Expect.macAcc` are khalkulo-specific and stay as extensions.
+
+**Dual-backend runner** — Verilator tests (<1s, 117 tests) and iverilog tests (20-30 min, 32 tests) under one `dotnet test` invocation. This architecture moves wholesale to Verifrog.
 
 ## Deliverables
 
@@ -41,20 +62,23 @@ Porting from khalkulo (`/tools/sim_debugger/`, `/tools/vcd_parser/`). The khalku
 
 ### Verifrog.Runner (F# library)
 
+Generalized from khalkulo's `tests/Fixtures/`:
+
+- [ ] SimFixture: create instance, reset, checkpoint Level 0, restore per test. Reads lib path and config from `verifrog.toml` instead of hardcoded paths.
 - [ ] Verilator backend: creates Sim instances, manages fixtures, runs Expecto tests
-- [ ] iverilog backend: Iverilog module — compile, run vvp, capture stdout, parse pass/fail
-- [ ] iverilog auto-discovery: scan testbench directory from TOML config, generate test per file
-- [ ] Iverilog parameter override: pass Verilog parameters at compile time
-- [ ] SimFixture: create instance, reset, checkpoint Level 0. Restore per test.
-- [ ] Expect helpers: Expect.signal, Expect.memory, Expect.register with readable failure output
+- [ ] Iverilog backend: compile, run vvp, capture stdout, parse pass/fail. Reads source paths from `verifrog.toml` instead of hardcoded `source/rtl/`.
+- [ ] Iverilog auto-discovery: scan testbench directories from TOML `[iverilog].testbenches` glob
+- [ ] Iverilog parameter override: pass Verilog parameters at compile time (proven: `I2C_HALF_PERIOD`)
+- [ ] Iverilog extra sources: auto-detect BFM/model dependencies or declare in TOML `[iverilog].models`
+- [ ] Expect helpers: Expect.signal, Expect.memory, Expect.register with readable failure output (signal name, expected/actual, cycle count)
 - [ ] Parallel execution: separate Verilator instances per test list
-- [ ] `dotnet test` integration
+- [ ] `dotnet test` integration via YoloDev.Expecto.TestSdk
 
 ### verifrog CLI
 
 - [ ] `verifrog build` — reads `verifrog.toml`, runs Verilator on declared sources, compiles C shim, links shared library into `[test].output` directory
 - [ ] `verifrog clean` — remove build artifacts
-- [ ] `verifrog init` — scaffold a new project (create `verifrog.toml` template, sample test file)
+- [ ] `verifrog init` — scaffold a new project (create `verifrog.toml` template, sample test file, sample .fsproj)
 - [ ] F# dotnet tool, installable via `dotnet tool install`
 
 ### Documentation
@@ -63,15 +87,15 @@ Porting from khalkulo (`/tools/sim_debugger/`, `/tools/vcd_parser/`). The khalku
 - [ ] Getting Started guide: install deps, `verifrog init`, write first test, run it
 - [ ] API reference: Sim, Memory, Register, Checkpoint, Force, Expect helpers
 - [ ] Configuration reference: `verifrog.toml` format, all sections
-- [ ] Extension guide: how to build design-specific APIs on top of Verifrog
+- [ ] Extension guide: how to build design-specific APIs on top of Verifrog (using khalkulo as the example)
 - [ ] Architecture doc: how the layers connect (F# → P/Invoke → C shim → Verilator)
 
 ### Sample Projects
 
 - [ ] **Minimal**: simple counter module, 3-4 tests demonstrating Sim basics (step, read, write, checkpoint)
-- [ ] **With registers**: ALU or small SoC with a register file, demonstrates register map access
-- [ ] **With memory**: design with SRAM, demonstrates memory region access
-- [ ] **With iverilog**: design with a Verilog testbench (BFM, timing), demonstrates dual-backend runner
+- [ ] **With registers**: ALU or small SoC with a register file, demonstrates register map access from TOML
+- [ ] **With memory**: design with SRAM, demonstrates memory region access from TOML
+- [ ] **With iverilog**: design with a Verilog testbench (BFM, timing), demonstrates dual-backend runner and auto-discovery
 - [ ] Each sample includes its own `verifrog.toml`, test project, and README
 
 ## Architecture
@@ -83,20 +107,38 @@ Porting from khalkulo (`/tools/sim_debugger/`, `/tools/vcd_parser/`). The khalku
 │  - Test functions using Verifrog API             │
 ├─────────────────────────────────────────────────┤
 │  Verifrog.Runner                                 │
-│  - Verilator backend (SimFixture, checkpoints)   │
-│  - iverilog backend (compile/run/parse)          │
-│  - Expect helpers                                │
+│  - SimFixture (checkpoint levels, lifecycle)     │
+│  - Verilator backend                             │
+│  - iverilog backend (compile/run/parse/discover) │
+│  - Expect helpers (signal, memory, register)     │
 ├─────────────────────────────────────────────────┤
 │  Verifrog.Sim              Verifrog.Vcd          │
 │  - Sim type                - VCD parser          │
 │  - Memory/Register access  - Signal query        │
-│  - P/Invoke                - Timing analysis     │
+│  - TOML-driven config      - Timing analysis     │
+│  - P/Invoke                                      │
 ├─────────────────────────────────────────────────┤
 │  libverifrog_sim.dylib/.so                       │
 │  - Generic Verilator C wrapper                   │
 │  - Built per-design via `verifrog build`         │
 ├─────────────────────────────────────────────────┤
 │  Verilator (user's compiled RTL)                 │
+└─────────────────────────────────────────────────┘
+```
+
+### Extension model (user's repo, not Verifrog)
+
+```
+┌─────────────────────────────────────────────────┐
+│  khalkulo tests (150 tests)                      │
+│  - Unit, Integration, Stress, Golden             │
+├─────────────────────────────────────────────────┤
+│  khalkulo extension layer                        │
+│  - Expect.weightSram, Expect.macWeight, etc.     │
+│  - Stimulus module (register addrs, layer types) │
+│  - KhalkuloSim (WgtWrite, ActWrite, StartInfer)  │
+├─────────────────────────────────────────────────┤
+│  Verifrog (NuGet or project reference)           │
 └─────────────────────────────────────────────────┘
 ```
 

@@ -179,6 +179,28 @@ let tests = testList "MySoC" [
 
 Also available: `stress` (long-running), `golden` (reference outputs), `regression` (bug-fix coverage).
 
+## Declarative tests
+
+Most hardware tests are just "set signals, step, check." Write those without F# using `.verifrog` files:
+
+```
+test "counter reaches 10" [Smoke]:
+  write enable = 1
+  step 10
+  expect count == 10
+
+test "load then count" [Unit]:
+  write load_value = 42, load_en = 1
+  step 1
+  write load_en = 0, enable = 1
+  step 5
+  expect count == 47
+```
+
+Declarative tests coexist with F# tests in the same runner — same categories, same `--report`, same `verifrog test`. Use `.verifrog` files for the simple stuff, F# for complex workflows (fork, golden models, error recovery).
+
+See the [Declarative Tests Guide](docs/declarative-tests.md) for the full format reference.
+
 ## Architecture
 
 ```
@@ -259,6 +281,7 @@ See the full [Configuration Reference](docs/config-reference.md).
 | [VCD CLI Reference](docs/vcd-cli.md) | Command-line VCD analysis tool |
 | [CLI Reference](docs/cli-reference.md) | `verifrog init`, `build`, `clean`, `test`, `debug`, `results` |
 | [Configuration Reference](docs/config-reference.md) | Every `verifrog.toml` section and key |
+| [Declarative Tests](docs/declarative-tests.md) | Write tests in `.verifrog` files without F# code |
 | [Cookbook](docs/cookbook.md) | Recipes for common test patterns |
 | [CI Integration Guide](docs/ci-guide.md) | GitHub Actions, GitLab CI, caching, test report publishing |
 | [Extension Guide](docs/extension-guide.md) | Building design-specific layers on top of Verifrog |

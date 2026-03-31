@@ -44,7 +44,63 @@ verifrog test                           # All tests
 
 Available categories: `Smoke`, `Unit`, `Parametric`, `Integration`, `Stress`, `Golden`, `Regression`.
 
-## Basic patterns
+## Declarative tests (.verifrog)
+
+Most simple tests can be written without F# code. Create a `.verifrog` file in your tests directory:
+
+### Basic stimulus-check (declarative)
+
+```
+test "counter reaches 10" [Smoke]:
+  write enable = 1
+  step 10
+  expect count == 10
+```
+
+**Equivalent F#:**
+```fsharp
+test "counter reaches 10" {
+    use sim = SimFixture.create ()
+    sim.Write("enable", 1L) |> ignore
+    sim.Step(10)
+    Expect.signal sim "count" 10L "count should reach 10"
+}
+```
+
+### Memory load and check (declarative)
+
+```
+test "SRAM write-read" [Unit]:
+  load data_ram bank=0 [0xAB, 0xCD, 0xEF]
+  expect data_ram[0][0] == 0xAB
+  expect data_ram[0][2] == 0xEF
+```
+
+### Run-until with timeout (declarative)
+
+```
+test "inference completes" [Integration]:
+  write CTRL = 0x01
+  run-until fsm_state == 10, max = 50000
+  expect STATUS == 0x00
+```
+
+### Checkpoint/restore (declarative)
+
+```
+test "checkpoint and restore" [Unit]:
+  write enable = 1
+  step 5
+  checkpoint mid
+  step 5
+  expect count == 10
+  restore mid
+  expect count == 5
+```
+
+See the [Declarative Tests Guide](declarative-tests.md) for the full format reference.
+
+## Basic patterns (F#)
 
 ### Test a counter
 

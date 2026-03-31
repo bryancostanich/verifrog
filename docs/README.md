@@ -8,7 +8,9 @@
 
 2. **[Core Concepts](concepts.md)** — Understand how Verifrog works: signals, simulation control, checkpoints, forces, memories, registers, what-if exploration, and test categories.
 
-3. **[Cookbook](cookbook.md)** — Copy-paste recipes for common patterns: testing a state machine, sweeping parameters, debugging with VCD, and more.
+3. **[Declarative Tests](declarative-tests.md)** — Write tests in `.verifrog` files without F# code. Covers ~75% of typical hardware tests.
+
+4. **[Cookbook](cookbook.md)** — Copy-paste recipes for common patterns: testing a state machine, sweeping parameters, debugging with VCD, and more.
 
 ## Reference
 

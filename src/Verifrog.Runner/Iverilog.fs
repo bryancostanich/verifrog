@@ -43,18 +43,19 @@ let private runProcess (cmd: string) (args: string) (workDir: string) (timeoutMs
 /// overrides: parameter overrides (e.g., [("TIMEOUT", "10000")])
 /// extraSources: additional .v files beyond what's in TOML
 let run (projectRoot: string) (config: VerifrogConfig) (testbenchName: string) (overrides: (string * string) list) (extraSources: string list) : IverilogResult =
-    let scratchDir = Path.Combine(projectRoot, config.Test.Output)
-    let testOutputDir = Path.Combine(projectRoot, config.Test.TestOutput)
+    let scratchDir = config.Test.Output         // Already absolute from Config.parse
+    let testOutputDir = config.Test.TestOutput   // Already absolute from Config.parse
     Directory.CreateDirectory(scratchDir) |> ignore
     Directory.CreateDirectory(testOutputDir) |> ignore
 
     let iverilogCfg = config.Iverilog |> Option.defaultValue { Testbenches = []; Models = [] }
 
     // Find the testbench file by searching testbench directories
+    // Testbench patterns are already absolute paths from Config.parse
     let tbFile =
         iverilogCfg.Testbenches
         |> List.tryPick (fun pattern ->
-            let dir = Path.GetDirectoryName(Path.Combine(projectRoot, pattern))
+            let dir = Path.GetDirectoryName(pattern)
             let candidate = Path.Combine(dir, $"{testbenchName}.v")
             if File.Exists(candidate) then Some candidate else None)
         |> Option.defaultWith (fun () ->
@@ -67,11 +68,11 @@ let run (projectRoot: string) (config: VerifrogConfig) (testbenchName: string) (
 
     let vvpFile = Path.Combine(scratchDir, $"{testbenchName}.vvp")
 
-    // Build source list from TOML design.sources
-    let rtlSources = config.Design.Sources |> List.map (fun s -> Path.Combine(projectRoot, s)) |> String.concat " "
+    // Sources are already absolute paths from Config.parse
+    let rtlSources = config.Design.Sources |> String.concat " "
 
-    // Model sources from TOML
-    let modelSources = iverilogCfg.Models |> List.map (fun s -> Path.Combine(projectRoot, s)) |> String.concat " "
+    // Model sources are already absolute paths from Config.parse
+    let modelSources = iverilogCfg.Models |> String.concat " "
 
     // Parameter overrides
     let paramFlags =
@@ -99,10 +100,10 @@ let runSimple (projectRoot: string) (config: VerifrogConfig) (testbenchName: str
 /// Auto-detect if a testbench needs I2C BFM (by name heuristic)
 let runAuto (projectRoot: string) (config: VerifrogConfig) (testbenchName: string) : IverilogResult =
     let iverilogCfg = config.Iverilog |> Option.defaultValue { Testbenches = []; Models = [] }
+    // Model paths are already absolute from Config.parse
     let extras =
         if testbenchName.Contains("i2c", StringComparison.OrdinalIgnoreCase) then
             iverilogCfg.Models |> List.filter (fun m -> m.Contains("i2c", StringComparison.OrdinalIgnoreCase))
-                               |> List.map (fun m -> Path.Combine(projectRoot, m))
         else
             []
     run projectRoot config testbenchName [] extras
@@ -110,8 +111,9 @@ let runAuto (projectRoot: string) (config: VerifrogConfig) (testbenchName: strin
 /// Discover all testbench files matching TOML patterns
 let discover (projectRoot: string) (config: VerifrogConfig) : string list =
     let iverilogCfg = config.Iverilog |> Option.defaultValue { Testbenches = []; Models = [] }
+    // Testbench patterns are already absolute paths from Config.parse
     [ for pattern in iverilogCfg.Testbenches do
-        let dir = Path.GetDirectoryName(Path.Combine(projectRoot, pattern))
+        let dir = Path.GetDirectoryName(pattern)
         let filePattern = Path.GetFileName(pattern)
         if Directory.Exists(dir) then
             yield! Directory.GetFiles(dir, filePattern)

@@ -155,8 +155,8 @@ let private doBuild (projectDir: string) =
             exit 1
 
     let config = parse tomlPath
-    let projectRoot = Path.GetDirectoryName(tomlPath)
-    let buildDir = Path.Combine(projectRoot, config.Test.Output)
+    let projectRoot = Path.GetDirectoryName(Path.GetFullPath(tomlPath))
+    let buildDir = config.Test.Output  // Already absolute from Config.parse
 
     printfn "Building %s (top=%s)" tomlPath config.Design.Top
 
@@ -167,10 +167,9 @@ let private doBuild (projectDir: string) =
         eprintfn "Set VERIFROG_ROOT to the Verifrog repo root."
         1
     | Some makefile ->
-        // Resolve RTL sources
+        // Sources are already absolute paths from Config.parse
         let rtlSources =
             config.Design.Sources
-            |> List.map (fun s -> Path.Combine(projectRoot, s))
             |> String.concat " "
 
         let verilatorFlags =
@@ -202,8 +201,7 @@ let private doClean (projectDir: string) =
             exit 1
 
     let config = parse tomlPath
-    let projectRoot = Path.GetDirectoryName(tomlPath)
-    let buildDir = Path.Combine(projectRoot, config.Test.Output)
+    let buildDir = config.Test.Output  // Already absolute from Config.parse
 
     if Directory.Exists(buildDir) then
         Directory.Delete(buildDir, true)
@@ -225,8 +223,7 @@ let private doDebug (projectDir: string) (scriptPath: string option) =
             exit 1
 
     let config = parse tomlPath
-    let projectRoot = Path.GetDirectoryName(tomlPath)
-    let buildDir = Path.Combine(projectRoot, config.Test.Output)
+    let buildDir = config.Test.Output  // Already absolute from Config.parse
     let libName = if OperatingSystem.IsMacOS() then "libverifrog_sim.dylib" else "libverifrog_sim.so"
     let libPath = Path.Combine(buildDir, libName)
 

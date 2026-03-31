@@ -156,14 +156,33 @@ let private parseRegisters (root: TomlTable) : RegisterConfig option =
                     | _ -> () ]
         Some { Path = path; Width = width; Map = map }
 
-/// Parse a verifrog.toml file
+/// Resolve a relative path against a base directory. Absolute paths pass through unchanged.
+let private resolvePath (baseDir: string) (p: string) : string =
+    if Path.IsPathRooted(p) then p
+    else Path.GetFullPath(Path.Combine(baseDir, p))
+
+/// Parse a verifrog.toml file.
+/// All filesystem paths (design.sources, iverilog.testbenches, iverilog.models,
+/// test.output, test.test_output) are resolved to absolute paths using the
+/// toml file's directory as the base. This ensures consumers never need to
+/// combine paths with a project root — they're ready to use as-is.
 let parse (tomlPath: string) : VerifrogConfig =
     let content = File.ReadAllText(tomlPath)
     let root = Toml.ToModel(content)
-    { Design = parseDesign root
+    let baseDir = Path.GetDirectoryName(Path.GetFullPath(tomlPath))
+
+    let design = parseDesign root
+    let iverilog = parseIverilog root
+    let test = parseTest root
+
+    { Design = { design with Sources = design.Sources |> List.map (resolvePath baseDir) }
       Verilator = parseVerilator root
-      Iverilog = parseIverilog root
-      Test = parseTest root
+      Iverilog = iverilog |> Option.map (fun iv ->
+        { iv with
+            Testbenches = iv.Testbenches |> List.map (resolvePath baseDir)
+            Models = iv.Models |> List.map (resolvePath baseDir) })
+      Test = { Output = resolvePath baseDir test.Output
+               TestOutput = resolvePath baseDir test.TestOutput }
       Memories = parseMemories root
       Registers = parseRegisters root }
 

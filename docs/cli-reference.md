@@ -115,17 +115,27 @@ verifrog clean samples/counter  # Clean a specific project
 ### `test` — Build (if needed) and run tests
 
 ```bash
-verifrog test [<project-dir>] [-- dotnet-args...]
+verifrog test [<project-dir>] [--report [path]] [-- dotnet-args...]
 ```
 
 Finds `verifrog.toml`, auto-builds the simulation library if it doesn't exist, sets the library path (`DYLD_LIBRARY_PATH` on macOS, `LD_LIBRARY_PATH` on Linux), and runs the test project.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--report` | Generate a Markdown test report (`test-results.md` in the project root) |
+| `--report <path>` | Generate the report at a custom path |
+| `-- <args>` | Pass remaining args to the test runner (e.g., `--filter`) |
 
 **Example:**
 
 ```bash
 verifrog test                             # Test current project
 verifrog test samples/counter             # Test a specific project
-verifrog test -- --filter "checkpoint"    # Pass args to dotnet
+verifrog test --report                    # Run tests + generate test-results.md
+verifrog test --report results.md         # Custom report path
+verifrog test -- --filter "checkpoint"    # Pass args to test runner
 ```
 
 **Output:**
@@ -133,8 +143,48 @@ verifrog test -- --filter "checkpoint"    # Pass args to dotnet
 ```
 Running tests: Tests.fsproj
   Library: build/libverifrog_sim.dylib
+  Report: test-results.md
 
 EXPECTO! 12 tests run in 00:00:00.08 — 12 passed, 0 failed. Success!
+
+Wrote test-results.md (12 tests, 2 suites)
+```
+
+**Generated markdown report:**
+
+```markdown
+# Test Results
+
+**12 tests passed** in 80ms
+
+| Suite | Passed | Failed | Errored | Skipped | Time |
+|-------|-------:|-------:|--------:|--------:|-----:|
+| Sim   |      8 |      0 |       0 |       0 | 45ms |
+| Vcd   |      4 |      0 |       0 |       0 | 35ms |
+
+## Sim
+
+| Status | Test | Time |
+|--------|------|-----:|
+| PASS | checkpoint and restore | 11ms |
+| PASS | create and reset | <1ms |
+| PASS | force and release | 3ms |
+...
+```
+
+### `results` — Convert JUnit XML to Markdown
+
+```bash
+verifrog results <junit.xml> [-o output.md]
+```
+
+Standalone converter: takes a JUnit XML file (produced by Expecto's `--junit-summary`) and generates a Markdown report. Useful if you already have XML from a CI run or want to re-generate the report.
+
+**Example:**
+
+```bash
+verifrog results test-results.xml              # Print markdown to stdout
+verifrog results test-results.xml -o report.md # Write to file
 ```
 
 ### `debug` — Interactive simulation debugger

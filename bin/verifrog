@@ -17,15 +17,16 @@ set -euo pipefail
 
 # ---- Auto-detect VERIFROG_ROOT ----
 
+# Resolve symlinks to find the real script location
+SOURCE="${BASH_SOURCE[0]}"
+while [[ -L "$SOURCE" ]]; do
+    DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    SOURCE="$(readlink "$SOURCE")"
+    [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+done
+SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+
 if [[ -z "${VERIFROG_ROOT:-}" ]]; then
-    # Resolve symlinks to find the real script location
-    SOURCE="${BASH_SOURCE[0]}"
-    while [[ -L "$SOURCE" ]]; do
-        DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
-        SOURCE="$(readlink "$SOURCE")"
-        [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
-    done
-    SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
     export VERIFROG_ROOT="$(dirname "$SCRIPT_DIR")"
 fi
 
@@ -72,9 +73,10 @@ Commands:
   init [dir]                    Scaffold a new verifrog project
   build [dir]                   Build Verilator model from verifrog.toml
   clean [dir]                   Remove build artifacts
-  test [dir] [-- args...]       Build (if needed) and run tests
+  test [dir] [--report [path]]  Build (if needed) and run tests
   debug [dir] [--script <f>]    Interactive simulation debugger
   vcd <file.vcd> [options]      Analyze VCD waveform files
+  results <junit.xml> [-o path] Convert JUnit XML to Markdown report
 
 Options:
   -h, --help                    Show this help
@@ -84,7 +86,10 @@ Examples:
   verifrog build
   verifrog test
   verifrog test samples/counter
-  verifrog test -- --filter "counter"
+  verifrog test --report                    # Run tests + generate test-results.md
+  verifrog test --report results.md         # Custom report path
+  verifrog test -- --filter "counter"       # Pass args to test runner
+  verifrog results test-results.xml         # Convert existing XML to markdown
   verifrog debug
   verifrog debug --script probe.txt
   verifrog vcd output/sim.vcd --signal "fsm*" --debug
@@ -110,11 +115,21 @@ cmd_clean() {
 
 cmd_test() {
     local dir="."
+    local report=false
+    local report_path=""
     local dotnet_args=()
 
-    # Parse args: everything before "--" is our dir, everything after goes to dotnet test
+    # Parse args: --report before "--", everything after "--" goes to dotnet
     while [[ $# -gt 0 ]]; do
         case "$1" in
+            --report)
+                report=true
+                if [[ "${2:-}" != "" && "${2:-}" != -* && "${2:-}" != "--" ]]; then
+                    report_path="$2"
+                    shift
+                fi
+                shift
+                ;;
             --)
                 shift
                 dotnet_args=("$@")
@@ -170,16 +185,77 @@ cmd_test() {
     local test_dir
     test_dir="$(dirname "$test_proj")"
 
-    # Set library path and run
+    # Set library path
     local path_var
     path_var=$(lib_path_var)
+    export "$path_var"="$build_dir${!path_var:+:${!path_var}}"
+
+    # Set up report generation
+    local junit_xml=""
+    local extra_args=()
+    if [[ "$report" == true ]]; then
+        junit_xml="$project_root/test-results.xml"
+        if [[ -z "$report_path" ]]; then
+            report_path="$project_root/test-results.md"
+        fi
+        extra_args=("--junit-summary" "$junit_xml")
+    fi
 
     echo "Running tests: $(basename "$test_proj")"
     echo "  Library: $lib_path"
+    if [[ "$report" == true ]]; then
+        echo "  Report: $report_path"
+    fi
     echo ""
 
-    export "$path_var"="$build_dir${!path_var:+:${!path_var}}"
-    dotnet run --project "$test_proj" "${dotnet_args[@]+"${dotnet_args[@]}"}"
+    # Run tests
+    local exit_code=0
+    dotnet run --project "$test_proj" -- "${extra_args[@]+"${extra_args[@]}"}" "${dotnet_args[@]+"${dotnet_args[@]}"}" || exit_code=$?
+
+    # Generate markdown report
+    if [[ "$report" == true && -f "$junit_xml" ]]; then
+        echo ""
+        dotnet fsi "$SCRIPT_DIR/junit-to-md.fsx" "$junit_xml" "$report_path" 2>&1
+    fi
+
+    return $exit_code
+}
+
+cmd_results() {
+    local input=""
+    local output=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -o|--output)
+                output="$2"
+                shift 2
+                ;;
+            *)
+                input="$1"
+                shift
+                ;;
+        esac
+    done
+
+    if [[ -z "$input" ]]; then
+        echo "Usage: verifrog results <junit.xml> [-o output.md]"
+        echo ""
+        echo "Convert JUnit XML test results to Markdown."
+        echo ""
+        echo "Examples:"
+        echo "  verifrog results test-results.xml                 # Print to stdout"
+        echo "  verifrog results test-results.xml -o results.md   # Write to file"
+        exit 0
+    fi
+
+    [[ -f "$input" ]] || die "File not found: $input"
+
+    if [[ -n "$output" ]]; then
+        dotnet fsi "$SCRIPT_DIR/junit-to-md.fsx" "$input" "$output"
+    else
+        dotnet fsi "$SCRIPT_DIR/junit-to-md.fsx" "$input"
+    fi
 }
 
 cmd_debug() {
@@ -196,12 +272,13 @@ cmd_vcd() {
 [[ $# -eq 0 ]] && { usage; exit 0; }
 
 case "$1" in
-    init)   shift; cmd_init "$@" ;;
-    build)  shift; cmd_build "$@" ;;
-    clean)  shift; cmd_clean "$@" ;;
-    test)   shift; cmd_test "$@" ;;
-    debug)  shift; cmd_debug "$@" ;;
-    vcd)    shift; cmd_vcd "$@" ;;
+    init)    shift; cmd_init "$@" ;;
+    build)   shift; cmd_build "$@" ;;
+    clean)   shift; cmd_clean "$@" ;;
+    test)    shift; cmd_test "$@" ;;
+    debug)   shift; cmd_debug "$@" ;;
+    vcd)     shift; cmd_vcd "$@" ;;
+    results) shift; cmd_results "$@" ;;
     -h|--help|help) usage ;;
-    *)      die "Unknown command: $1. Run 'verifrog --help' for usage." ;;
+    *)       die "Unknown command: $1. Run 'verifrog --help' for usage." ;;
 esac

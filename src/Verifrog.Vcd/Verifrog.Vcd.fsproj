@@ -3,10 +3,25 @@
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>
     <RootNamespace>Verifrog.Vcd</RootNamespace>
+
+    <!-- NuGet package metadata -->
+    <PackageId>Verifrog.Vcd</PackageId>
+    <Version>1.0.0</Version>
+    <Description>VCD waveform parser for Verilog simulation output. Parse, query signals, value-at-time, transitions, timing analysis.</Description>
+    <Authors>Bryan Costanich</Authors>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <RepositoryUrl>https://github.com/bryancostanich/verifrog</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/bryancostanich/verifrog</PackageProjectUrl>
+    <PackageTags>verilog;vcd;waveform;simulation;hardware;eda</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="VcdParser.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="../../docs/vcd-guide.md" Pack="true" PackagePath="README.md" />
   </ItemGroup>
 
 </Project>

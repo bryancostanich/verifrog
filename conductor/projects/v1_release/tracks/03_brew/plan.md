@@ -4,9 +4,9 @@
 
 This is the blocker. Without NuGet packages, every consumer needs a cloned repo and `VERIFROG_ROOT`.
 
-- [ ] Add package metadata to Verifrog.Sim, Verifrog.Runner, Verifrog.Vcd .fsproj files (PackageId, Version, Description, Authors, License, RepositoryUrl)
-- [ ] Verify `dotnet pack` produces clean .nupkg files for all three libraries
-- [ ] Test packages locally: create a fresh project, reference via local NuGet feed, run tests
+- [x] Add package metadata to Verifrog.Sim, Verifrog.Runner, Verifrog.Vcd .fsproj files (PackageId, Version, Description, Authors, License, RepositoryUrl)
+- [x] Verify `dotnet pack` produces clean .nupkg files for all three libraries
+- [x] Test packages locally: create a fresh project, reference via local NuGet feed, run tests
 - [ ] Publish to nuget.org (requires API key)
 - [ ] Set up GitHub Actions workflow to auto-publish on release tag
 

@@ -12,6 +12,7 @@
     <Compile Include="SimTests.fs" />
     <Compile Include="VcdTests.fs" />
     <Compile Include="RunnerTests.fs" />
+    <Compile Include="DeclarativeTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

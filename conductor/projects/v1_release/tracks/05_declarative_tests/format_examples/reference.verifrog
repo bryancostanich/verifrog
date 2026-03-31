@@ -1,0 +1,97 @@
+# Option A: Custom line-oriented format
+# ======================================
+# Reads like a waveform annotation. Each line is one command.
+# Indentation scopes tests. Minimal punctuation.
+
+# --- Simple smoke tests ---
+
+test "counter starts at zero" [Smoke]:
+  expect count == 0
+
+test "counter reaches 10" [Smoke]:
+  write enable = 1
+  step 10
+  expect count == 10
+
+test "overflow pulses at 255" [Smoke]:
+  write enable = 1
+  step 256
+  expect overflow == 1
+  expect count == 0
+
+# --- Unit tests ---
+
+test "load value" [Unit]:
+  write load_value = 0x2A
+  write load_en = 1
+  step 1
+  write load_en = 0
+  expect count == 0x2A
+
+test "load then count" [Unit]:
+  write load_value = 42
+  write load_en = 1
+  step 1
+  write load_en = 0
+  write enable = 1
+  step 5
+  expect count == 47
+
+test "force holds count" [Unit]:
+  write enable = 1
+  step 5
+  expect count == 5
+  force enable = 0
+  step 10
+  expect count == 5
+  release enable
+
+test "checkpoint and restore" [Unit]:
+  write enable = 1
+  step 5
+  checkpoint mid
+  step 5
+  expect count == 10
+  restore mid
+  expect count == 5
+
+test "run-until overflow" [Unit]:
+  write enable = 1
+  write load_value = 250
+  write load_en = 1
+  step 1
+  write load_en = 0
+  run-until overflow == 1, max = 20
+  expect count == 0
+
+# --- Memory tests (references verifrog.toml) ---
+
+test "backdoor SRAM write-read" [Unit]:
+  load data_ram bank=0 [0xAB, 0xCD, 0xEF]
+  expect data_ram[0][0] == 0xAB
+  expect data_ram[0][1] == 0xCD
+  expect data_ram[0][2] == 0xEF
+
+test "weight SRAM from file" [Integration]:
+  load weight_sram bank=0 from weights_layer0.hex
+  load weight_sram bank=1 from weights_layer1.hex
+  write CTRL = 0x01
+  run-until fsm_state == 10, max = 50000
+  expect STATUS == 0x00
+
+# --- Register tests ---
+
+test "register write-read" [Unit]:
+  write CTRL = 0x42
+  step 1
+  expect CTRL == 0x42
+
+test "configure layer" [Integration]:
+  write MODE = 0x02
+  write NUM_LAYERS = 1
+  write LAYER_TYPE = 0x01
+  write IN_CHANNELS = 3
+  write OUT_CHANNELS = 16
+  write CTRL = 0x01
+  run-until fsm_state == 10, max = 50000
+  expect STATUS == 0x00

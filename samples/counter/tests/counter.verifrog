@@ -1,0 +1,59 @@
+# Counter sample — declarative tests
+# These test the same behaviors as SimTests.fs but without F# code.
+
+test "counter starts at zero" [Smoke]:
+  expect count == 0
+
+test "counter reaches 10" [Smoke]:
+  write enable = 1
+  step 10
+  expect count == 10
+
+test "counter wraps after 255" [Smoke]:
+  write enable = 1
+  step 256
+  expect count == 0
+
+test "load value" [Unit]:
+  write load_value = 0x2A
+  write load_en = 1
+  step 1
+  write load_en = 0
+  expect count == 0x2A
+
+test "load then count" [Unit]:
+  write load_value = 42
+  write load_en = 1
+  step 1
+  write load_en = 0
+  write enable = 1
+  step 5
+  expect count == 47
+
+test "force holds count" [Unit]:
+  write enable = 1
+  step 5
+  expect count == 5
+  force enable = 0
+  step 10
+  expect count == 5
+  release enable
+
+test "checkpoint and restore" [Unit]:
+  write enable = 1
+  step 5
+  checkpoint mid
+  step 5
+  expect count == 10
+  restore mid
+  expect count == 5
+
+test "run-until overflow" [Unit]:
+  write enable = 1
+  write load_value = 250
+  write load_en = 1
+  step 1
+  write load_en = 0
+  run-until overflow == 1, max = 20
+  step 1
+  expect count == 0

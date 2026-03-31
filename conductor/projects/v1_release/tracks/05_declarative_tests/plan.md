@@ -4,35 +4,31 @@
 
 Decide on the file format and nail down the syntax before writing any code.
 
-- [ ] Evaluate format options: YAML, custom line-oriented format, or something else
-  - YAML: familiar, good tooling, but verbose for simple cases and has foot-guns (Norway problem, implicit typing)
-  - Custom format: concise, purpose-built, but no existing parser/editor support
-  - Consider: can we get 90% of the value with YAML and a strict schema?
-- [ ] Define the 9 core primitives: write, step, expect, load, run-until, force, release, checkpoint, restore
-- [ ] Define test metadata: name, category, description
-- [ ] Define how tests reference verifrog.toml (for memory/register names)
-- [ ] Write 10+ example test files covering the range of declarative-capable tests from khalkulo
-- [ ] Get feedback on the format before implementing
+- [x] Evaluate format options — chose custom line-oriented format over YAML (much more concise, reads like pseudocode)
+- [x] Define the 9 core primitives: write, step, expect, load, load-from-file, run-until, force, release, checkpoint, restore
+- [x] Define test metadata: name, category via `test "name" [Category]:`
+- [x] Define memory expect syntax: `expect mem[bank][addr] == value`
+- [x] Reference format example in tracks/05_declarative_tests/format_examples/reference.verifrog
 
 ## Phase 2: Parser
 
-- [ ] Implement parser for the chosen format (F# module in Verifrog.Runner)
-- [ ] Parse into an intermediate representation (list of test steps)
-- [ ] Validate: unknown signals, bad memory names, type errors
-- [ ] Good error messages with file/line references
+- [x] Implement parser for the chosen format (Declarative.fs in Verifrog.Runner)
+- [x] Parse into AST (DeclTest with Step list)
+- [x] Good error messages with file/line references
+- [ ] Validate: unknown signals, bad memory names at parse time (currently caught at runtime)
 
 ## Phase 3: Runner Integration
 
-- [ ] Generate Expecto test cases from parsed declarative tests
-- [ ] Support `--category` filtering (categories declared in the test file)
-- [ ] Support `--report` (declarative tests appear in markdown/JUnit output)
-- [ ] Coexist with F# tests in the same test project — both run under one `verifrog test`
-- [ ] `verifrog test` auto-discovers `.vftest` (or whatever extension) files
+- [x] Generate Expecto test cases from parsed declarative tests (toExpectoTest)
+- [x] Support `--category` filtering (categories from test headers map to testList groups)
+- [x] Support `--report` (declarative tests appear in markdown/JUnit output as "Declarative" suite)
+- [x] Coexist with F# tests — 30 F# + 8 declarative = 38 total, all pass
+- [x] Auto-discovers `.verifrog` files in test directories
 
 ## Phase 4: Error Reporting
 
-- [ ] Failures reference the declarative file name and line number
-- [ ] Show the expected vs actual value, signal name, and cycle — same quality as Expect.signal
+- [x] Failures reference the declarative file name and line number
+- [x] Show expected vs actual value with hex, signal name — same quality as Expect.signal
 - [ ] If a signal name doesn't exist, fail at parse time (not runtime) with a clear message
 
 ## Phase 5: Docs and Samples

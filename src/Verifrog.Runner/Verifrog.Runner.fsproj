@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <Compile Include="Category.fs" />
+    <Compile Include="Declarative.fs" />
     <Compile Include="Iverilog.fs" />
     <Compile Include="Expect.fs" />
     <Compile Include="SimFixture.fs" />

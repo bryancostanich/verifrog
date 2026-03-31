@@ -38,8 +38,9 @@ Decide on the file format and nail down the syntax before writing any code.
 ## Phase 5: Docs and Samples
 
 - [ ] Writing declarative tests guide
-- [ ] Update counter sample with a declarative test file alongside the F# tests
-- [ ] Update cookbook with declarative patterns
+- [ ] Update counter sample with a declarative test file alongside the F# tests (keep both — don't replace F#)
+- [ ] Side-by-side examples in docs: every declarative example should show the equivalent F# so users can see both approaches and choose
+- [ ] Update cookbook with declarative patterns (paired with F# equivalents)
 - [ ] Update README to mention declarative testing
 
 ## Open Questions

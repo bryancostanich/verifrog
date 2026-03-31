@@ -301,6 +301,64 @@ let private executeStep (sim: Sim) (step: Step) (file: string) (line: int) =
     | Restore name ->
         sim.RestoreCheckpoint(name)
 
+// ---- Validation ----
+
+/// Extract all signal names referenced in a test's steps
+let private referencedSignals (test: DeclTest) : (string * string * int) list =
+    [ for step in test.Steps do
+        match step with
+        | Write (s, _) -> yield (s, test.File, test.Line)
+        | Expect (s, _, _) -> yield (s, test.File, test.Line)
+        | RunUntil (s, _, _) -> yield (s, test.File, test.Line)
+        | Force (s, _) -> yield (s, test.File, test.Line)
+        | Release s -> yield (s, test.File, test.Line)
+        | _ -> () ]
+
+/// Extract all memory names referenced in a test's steps
+let private referencedMemories (test: DeclTest) : (string * string * int) list =
+    [ for step in test.Steps do
+        match step with
+        | ExpectMemory (m, _, _, _, _) -> yield (m, test.File, test.Line)
+        | Load (m, _, _) -> yield (m, test.File, test.Line)
+        | LoadFromFile (m, _, _) -> yield (m, test.File, test.Line)
+        | _ -> () ]
+
+/// Validate all signal and memory references in parsed tests against a live Sim.
+/// Returns a list of error strings. Empty list means all references are valid.
+let validate (tests: DeclTest list) (sim: Sim) : string list =
+    let knownSignals = sim.ListSignals() |> Set.ofList
+    let knownMemories = sim.MemoryNames |> Set.ofList
+
+    let signalErrors =
+        tests
+        |> List.collect referencedSignals
+        |> List.distinctBy (fun (s, _, _) -> s)
+        |> List.choose (fun (s, file, line) ->
+            if knownSignals.Contains(s) then None
+            // Also check if it's a register name (registers are accessed via Write/Expect too)
+            elif sim.RegisterNames |> List.contains s then None
+            else Some $"Unknown signal '{s}' in {Path.GetFileName file}:{line}")
+
+    let memoryErrors =
+        tests
+        |> List.collect referencedMemories
+        |> List.distinctBy (fun (m, _, _) -> m)
+        |> List.choose (fun (m, file, line) ->
+            if knownMemories.Contains(m) then None
+            else Some $"Unknown memory '{m}' in {Path.GetFileName file}:{line}")
+
+    signalErrors @ memoryErrors
+
+/// Create a validation test that checks all signal/memory references before running tests.
+/// Fails fast with all errors listed if any references are invalid.
+let private validationTest (tests: DeclTest list) (createSim: unit -> Sim) : Test =
+    testCase "validate signal references" (fun () ->
+        use sim = createSim ()
+        let errors = validate tests sim
+        if not errors.IsEmpty then
+            let msg = errors |> String.concat "\n  "
+            failtest $"Declarative test validation failed:\n  {msg}")
+
 /// Convert a DeclTest to an Expecto Test
 let private toExpectoTest (test: DeclTest) : Test =
     testCase test.Name (fun () ->
@@ -328,7 +386,8 @@ let private groupByCategory (tests: DeclTest list) (toTest: DeclTest -> Test) : 
             testList cat (ts |> List.map toTest))
     categorized
 
-/// Load all .verifrog files from a directory and return Expecto tests
+/// Load all .verifrog files from a directory and return Expecto tests.
+/// Includes a validation test that checks all signal references before running.
 let loadTests (dir: string) : Test list =
     let files =
         if Directory.Exists(dir) then
@@ -338,9 +397,15 @@ let loadTests (dir: string) : Test list =
     if files.IsEmpty then []
     else
         let allTests = files |> List.collect parse
-        groupByCategory allTests toExpectoTest
+        let validation = validationTest allTests (fun () ->
+            Sim.SuppressDisplay(true)
+            let sim = Sim.Create()
+            sim.Reset()
+            sim)
+        validation :: groupByCategory allTests toExpectoTest
 
-/// Load .verifrog files with TOML config for memory/register access
+/// Load .verifrog files with TOML config for memory/register access.
+/// Includes a validation test that checks all signal and memory references.
 let loadTestsWithConfig (dir: string) (config: Config.VerifrogConfig) : Test list =
     let files =
         if Directory.Exists(dir) then
@@ -350,4 +415,9 @@ let loadTestsWithConfig (dir: string) (config: Config.VerifrogConfig) : Test lis
     if files.IsEmpty then []
     else
         let allTests = files |> List.collect parse
-        groupByCategory allTests (toExpectoTestWithConfig config)
+        let validation = validationTest allTests (fun () ->
+            Sim.SuppressDisplay(true)
+            let sim = Sim.Create(config)
+            sim.Reset()
+            sim)
+        validation :: groupByCategory allTests (toExpectoTestWithConfig config)

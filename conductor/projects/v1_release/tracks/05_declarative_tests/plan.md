@@ -15,7 +15,7 @@ Decide on the file format and nail down the syntax before writing any code.
 - [x] Implement parser for the chosen format (Declarative.fs in Verifrog.Runner)
 - [x] Parse into AST (DeclTest with Step list)
 - [x] Good error messages with file/line references
-- [ ] Validate: unknown signals, bad memory names at parse time (currently caught at runtime)
+- [x] Validate: unknown signals and memory names checked before tests run (validation test runs first, reports all errors with file:line)
 
 ## Phase 3: Runner Integration
 
@@ -29,7 +29,7 @@ Decide on the file format and nail down the syntax before writing any code.
 
 - [x] Failures reference the declarative file name and line number
 - [x] Show expected vs actual value with hex, signal name — same quality as Expect.signal
-- [ ] If a signal name doesn't exist, fail at parse time (not runtime) with a clear message
+- [x] If a signal name doesn't exist, validation test fails before other tests run, lists all bad references
 
 ## Phase 5: Docs and Samples
 

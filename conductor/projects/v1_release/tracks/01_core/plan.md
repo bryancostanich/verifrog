@@ -84,21 +84,32 @@ Each sample is self-contained with its own verifrog.toml, .fsproj, README.
 Port khalkulo to consume Verifrog as a dependency.
 
 - [x] Create khalkulo extension layer as module functions (not wrapper type):
-  - Khalkulo.Verifrog.Sim: regfileRead/Write, wgtRead/Write, actRead/Write, macWeightReg/AccBank0/Product
-  - Khalkulo.Verifrog.Expect: register, weightSram, actSram, macWeight, macAcc, signal, iverilogPassed
-  - Khalkulo.Verifrog.Stimulus: register addresses, layer types, config helpers
-  - Khalkulo.Verifrog.Fixture: create, createWithCheckpoint, restore, saveLevel
-  - Khalkulo.Verifrog.Iverilog: khalkulo-specific paths and runners
-- [x] Create khalkulo's `verifrog.toml`
+  - Khalkulo.Verifrog.Sim (`Khalkulo.fs`): regfileRead/Write, wgtRead/Write, actRead/Write, macWeightReg/AccBank0/Product, waitForDone
+  - Khalkulo.Verifrog.Expect (`KhalkuloExpect.fs`): register, weightSram, actSram, macWeight, macAcc + delegates to Verifrog.Runner.Expect for signal/signalSatisfies/iverilogPassed
+  - Khalkulo.Verifrog.Stimulus (`Stimulus.fs`): register addresses, layer types, config helpers, triggerStart
+  - Khalkulo.Verifrog.Iverilog (`KhalkuloIverilog.fs`): delegates to Verifrog.Runner.Iverilog with khalkulo-specific paths/config
+  - Khalkulo.Verifrog.Cli (`KhalkuloCli.fs`): design-specific CLI commands (mac, regfile, wgt-write, act-write, load-hex, status)
+- [x] SimFixture used directly from Verifrog.Runner (no khalkulo copy)
+- [x] Create khalkulo's `verifrog.toml` (with `test_output` for VCD traces)
 - [x] Establish baseline: 116 passed, 14 skipped, 20 failed (150 total)
-- [x] Update all 16 test files to import from Verifrog + extension layer
-- [x] Verify results match baseline: **116 passed, 14 skipped, 20 failed**
+- [x] Update all test files to import from Verifrog + extension layer
+- [x] Resolve issue #9, unblock 14 inference tests: **118 passed, 0 skipped, 12 failed** (12 are pre-existing iverilog TB issues)
 - [x] Port sim_debugger CLI to Verifrog (generic REPL in Debugger.fs + khalkulo KhalkuloCli.fs extension)
 - [x] Port vcd_parser CLI to Verifrog.Vcd.Cli (standalone tool, no design-specific code)
 - [x] Update khalkulo docs/development.md to reference Verifrog
 - [x] Remove internal sim_debugger from khalkulo (3,727 lines deleted, all doc refs updated)
 - [x] Remove internal vcd_parser from khalkulo
+- [x] Consolidate: tests moved into `khalkulo/verifrog/tests/`, projects renamed (Khalkulo.TestRunner.fsproj, Khalkulo.Tests.fsproj)
 
 **Architecture:** Extension layer is pure module functions taking `Verifrog.Sim.Sim`. No wrapper types. Dependency flows one direction: khalkulo → Verifrog, never the reverse.
 
-**Known limitation:** Verilator dual-port register file backdoor race (bryancostanich/khalkulo#9) — direct array poke values are stored correctly but synchronous port B reads can get wrong-address data due to Verilator NBA scheduling optimization. Does not affect iverilog path.
+**Issue #9 resolved (2026-03-30):** The reported Verilator dual-port register file off-by-one (bryancostanich/khalkulo#9) was a misdiagnosis. Deep analysis of Verilator source code and generated C++ proved the NBA scheduling is correct. The actual root cause was a test register layout mismatch — tests used the old 5-byte per-layer stride but the FSM expects 6 bytes (OUT_CH split into high/low). Fix: updated register writes, unblocked 14 inference tests, all 118 Verilator tests pass.
+
+**Post-migration cleanup (2026-03-30):**
+- Deleted KhalkuloFixture.fs (was a verbatim copy of Verifrog.Runner.SimFixture) — tests now use SimFixture directly
+- Rewrote KhalkuloIverilog.fs to delegate to Verifrog.Runner.Iverilog instead of reimplementing it
+- KhalkuloExpect.fs generic helpers (signal, signalSatisfies, iverilogPassed) now delegate to Verifrog.Runner.Expect
+- Removed duplicate triggerStart from Khalkulo.fs (Stimulus.fs has the version with error handling)
+- Moved tests from `khalkulo/tests/` into `khalkulo/verifrog/tests/` to consolidate test infrastructure
+- Renamed projects: Khalkulo.Verifrog.fsproj → Khalkulo.TestRunner.fsproj, khalkulo_tests.fsproj → Khalkulo.Tests.fsproj
+- Added `test_output` config to verifrog.toml so VCD traces go to `verifrog/test_output/` instead of project root

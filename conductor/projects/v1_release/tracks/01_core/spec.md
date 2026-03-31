@@ -15,7 +15,7 @@ Porting from three proven khalkulo implementations:
 | `tests/Fixtures/` | Verifrog.Runner | SimFixture, Iverilog, generic Expect helpers | Expect.weightSram, macWeight, macAcc; all of Stimulus module |
 | `tests/` structure | Sample projects | Test organization patterns | All khalkulo-specific tests |
 
-The khalkulo test suite (150 tests) is the proof that these patterns work. Verifrog extracts the framework; khalkulo becomes a consumer of Verifrog with a design-specific extension layer.
+The khalkulo test suite (151 tests, 130 passing) is the proof that these patterns work. Verifrog extracts the framework; khalkulo consumes Verifrog with a design-specific extension layer. Migration is complete — no duplicate code remains in khalkulo.
 
 ### Proven Patterns from khalkulo (already working)
 
@@ -40,7 +40,7 @@ The following are battle-tested in khalkulo's 150-test suite and should be prese
 - [ ] Memory access: `sim.Memory("name").Read(bank, addr)` / `.Write(bank, addr, value)` driven from TOML config
 - [ ] Register access: `sim.Register("NAME").Read()` / `.Write(value)` driven from TOML config
 - [ ] P/Invoke bindings to libverifrog_sim (extracted from khalkulo Interop.fs)
-- [ ] TOML config parser (reads `verifrog.toml`, builds memory/register maps)
+- [ ] TOML config parser (reads `verifrog.toml`, builds memory/register maps, `test_output` for VCD/log directory)
 
 ### libverifrog_sim (C shim)
 
@@ -129,18 +129,24 @@ Generalized from khalkulo's `tests/Fixtures/`:
 ### Extension model (user's repo, not Verifrog)
 
 ```
-┌─────────────────────────────────────────────────┐
-│  khalkulo tests (150 tests)                      │
-│  - Unit, Integration, Stress, Golden             │
-├─────────────────────────────────────────────────┤
-│  khalkulo extension layer                        │
-│  - Expect.weightSram, Expect.macWeight, etc.     │
-│  - Stimulus module (register addrs, layer types) │
-│  - KhalkuloSim (WgtWrite, ActWrite, StartInfer)  │
-├─────────────────────────────────────────────────┤
-│  Verifrog (NuGet or project reference)           │
-└─────────────────────────────────────────────────┘
+khalkulo/verifrog/
+├── Khalkulo.TestRunner.fsproj          ← extension library
+│   ├── Khalkulo.fs                     ← signal accessors (regfile, SRAM, MAC)
+│   ├── KhalkuloExpect.fs               ← design-specific assertions + delegates to Runner.Expect
+│   ├── KhalkuloIverilog.fs             ← delegates to Runner.Iverilog with khalkulo paths
+│   ├── Stimulus.fs                     ← register addresses, layer types, config helpers
+│   └── KhalkuloCli.fs                  ← interactive debugger commands
+├── tests/
+│   └── Khalkulo.Tests.fsproj           ← test project (151 tests)
+│       ├── Unit/                       ← FSM, MAC, Regfile, DPC, Requant, Proof
+│       ├── Integration/                ← Dimensions, Quant, Address, MultiLayer
+│       ├── Stress/                     ← CDC, ErrorRecovery, Sequential, Patterns
+│       └── Golden/                     ← Path 1/2 golden inference
+├── verifrog.toml                       ← design config (memories, registers, paths)
+└── test_output/                        ← VCD traces, logs (gitignored)
 ```
+
+The extension layer uses Verifrog via project references (Verifrog.Sim, Verifrog.Runner, Verifrog.Cli). SimFixture is used directly from Verifrog.Runner — no khalkulo copy.
 
 ## Non-Goals for v1
 

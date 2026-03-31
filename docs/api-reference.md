@@ -293,6 +293,45 @@ ctrl.Write(0x01L) |> ignore
 
 ## Verifrog.Runner
 
+### Category
+
+Hardware verification test categories. Each function wraps `testList` with a category name, creating groups that can be filtered with `verifrog test --category <name>`.
+
+| Function | Description |
+|---|---|
+| `smoke tests` | Quick sanity checks — design is alive |
+| `unit tests` | Focused tests for individual operations |
+| `parametric tests` | Parameter sweeps and value range exploration |
+| `integration tests` | Multi-block interactions and data flow |
+| `stress tests` | Long-running, high-volume tests |
+| `golden tests` | Reference output verification |
+| `regression tests` | Bug-fix coverage tests |
+
+```fsharp
+open Verifrog.Runner.Category
+
+let tests = testList "Sim" [
+    smoke [
+        test "resets to zero" { ... }
+    ]
+    unit [
+        test "step increments" { ... }
+        test "checkpoint and restore" { ... }
+    ]
+    parametric [
+        test "ALU op sweep" { ... }
+    ]
+]
+```
+
+Filter from the command line:
+
+```bash
+verifrog test --category Smoke           # Run only smoke tests
+verifrog test --category Unit            # Run only unit tests
+verifrog test                            # Run all categories
+```
+
 ### SimFixture
 
 Convenience functions for common test setup patterns.

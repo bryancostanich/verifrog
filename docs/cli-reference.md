@@ -124,6 +124,7 @@ Finds `verifrog.toml`, auto-builds the simulation library if it doesn't exist, s
 
 | Flag | Description |
 |------|-------------|
+| `--category <name>` | Run only tests in a category (Smoke, Unit, Parametric, Integration, Stress, Golden, Regression) |
 | `--report` | Generate a Markdown test report (`test-results.md` in the project root) |
 | `--report <path>` | Generate the report at a custom path |
 | `-- <args>` | Pass remaining args to the test runner (e.g., `--filter`) |
@@ -133,7 +134,9 @@ Finds `verifrog.toml`, auto-builds the simulation library if it doesn't exist, s
 ```bash
 verifrog test                             # Test current project
 verifrog test samples/counter             # Test a specific project
-verifrog test --report                    # Run tests + generate test-results.md
+verifrog test --category Smoke            # Run only smoke tests
+verifrog test --category Unit --report    # Unit tests + markdown report
+verifrog test --report                    # All tests + generate test-results.md
 verifrog test --report results.md         # Custom report path
 verifrog test -- --filter "checkpoint"    # Pass args to test runner
 ```

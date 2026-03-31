@@ -4,10 +4,11 @@
 
 Expecto's `testList` naming works but doesn't give formal filter tags that match hardware verification domains. Need a lightweight tagging system.
 
-- [ ] Define category taxonomy: Smoke, Unit, Parametric, Integration, Stress, Golden, Regression
-- [ ] Implement as Expecto test attributes or wrapper (evaluate `testCategory` helper vs custom attributes)
-- [ ] Document how consumers define and filter by category
-- [ ] Update samples to demonstrate categorized tests
+- [x] Define category taxonomy: Smoke, Unit, Parametric, Integration, Stress, Golden, Regression
+- [x] Implement as testList wrappers in Category.fs (Verifrog.Runner)
+- [x] Add `--category` flag to verifrog test wrapper (maps to Expecto --filter-test-list)
+- [x] Document in API reference, cookbook, and CLI reference
+- [x] Update framework tests to demonstrate categorized tests
 
 ## Phase 2: CI Integration
 

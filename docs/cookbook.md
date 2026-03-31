@@ -2,6 +2,48 @@
 
 Recipes for common test patterns. Each recipe is self-contained — copy, adapt, and use.
 
+## Organizing tests by category
+
+Use hardware-domain categories to organize your tests. Categories create named groups in the test hierarchy that you can filter with `--category`:
+
+```fsharp
+open Verifrog.Runner.Category
+
+let tests = testList "MySoC" [
+    smoke [
+        test "design comes out of reset" { ... }
+        test "clock is toggling" { ... }
+    ]
+    unit [
+        test "register write-read" { ... }
+        test "counter increments" { ... }
+    ]
+    parametric [
+        test "ALU op sweep" { ... }
+    ]
+    integration [
+        test "DMA transfer end-to-end" { ... }
+    ]
+    golden [
+        test "conv layer matches reference" { ... }
+    ]
+    regression [
+        test "issue-42: overflow at boundary" { ... }
+    ]
+]
+```
+
+Run by category:
+
+```bash
+verifrog test --category Smoke          # Quick sanity checks
+verifrog test --category Unit           # Focused signal/block tests
+verifrog test --category Integration    # Multi-block tests
+verifrog test                           # All tests
+```
+
+Available categories: `Smoke`, `Unit`, `Parametric`, `Integration`, `Stress`, `Golden`, `Regression`.
+
 ## Basic patterns
 
 ### Test a counter

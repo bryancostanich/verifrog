@@ -86,6 +86,7 @@ Examples:
   verifrog build
   verifrog test
   verifrog test samples/counter
+  verifrog test --category Smoke             # Run only smoke tests
   verifrog test --report                    # Run tests + generate test-results.md
   verifrog test --report results.md         # Custom report path
   verifrog test -- --filter "counter"       # Pass args to test runner
@@ -117,9 +118,10 @@ cmd_test() {
     local dir="."
     local report=false
     local report_path=""
+    local category=""
     local dotnet_args=()
 
-    # Parse args: --report before "--", everything after "--" goes to dotnet
+    # Parse args: our flags before "--", everything after "--" goes to dotnet
     while [[ $# -gt 0 ]]; do
         case "$1" in
             --report)
@@ -129,6 +131,11 @@ cmd_test() {
                     shift
                 fi
                 shift
+                ;;
+            --category)
+                [[ -z "${2:-}" ]] && die "--category requires a value (Smoke, Unit, Parametric, Integration, Stress, Golden, Regression)"
+                category="$2"
+                shift 2
                 ;;
             --)
                 shift
@@ -190,15 +197,18 @@ cmd_test() {
     path_var=$(lib_path_var)
     export "$path_var"="$build_dir${!path_var:+:${!path_var}}"
 
-    # Set up report generation
+    # Set up report generation and category filter
     local junit_xml=""
     local extra_args=()
+    if [[ -n "$category" ]]; then
+        extra_args+=("--filter-test-list" "$category")
+    fi
     if [[ "$report" == true ]]; then
         junit_xml="$project_root/test-results.xml"
         if [[ -z "$report_path" ]]; then
             report_path="$project_root/test-results.md"
         fi
-        extra_args=("--junit-summary" "$junit_xml")
+        extra_args+=("--junit-summary" "$junit_xml")
     fi
 
     echo "Running tests: $(basename "$test_proj")"

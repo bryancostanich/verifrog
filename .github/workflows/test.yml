@@ -1,0 +1,62 @@
+# Verifrog CI — build RTL model and run tests
+#
+# Caches the Verilator build output keyed on RTL source hashes,
+# so rebuilds only happen when the design changes.
+
+name: Test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Install Verilator
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y verilator
+
+      - name: Cache Verilator build
+        uses: actions/cache@v4
+        with:
+          path: samples/counter/build
+          key: verilator-counter-${{ hashFiles('samples/counter/rtl/**', 'samples/counter/verifrog.toml', 'src/shim/**') }}
+
+      - name: Build simulation library
+        run: |
+          export VERIFROG_ROOT=$PWD
+          bin/verifrog build samples/counter
+
+      - name: Run tests
+        run: |
+          export VERIFROG_ROOT=$PWD
+          bin/verifrog test samples/counter --report test-results.md
+
+      - name: Publish test report
+        if: always()
+        run: |
+          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          # Skip the H1 header (first line) since we added our own
+          tail -n +2 test-results.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No test report generated." >> $GITHUB_STEP_SUMMARY
+
+      - name: Upload test artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: |
+            test-results.md
+            samples/counter/test-results.xml

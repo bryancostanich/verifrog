@@ -20,6 +20,7 @@
 ## Guides
 
 - **[VCD Parser Guide](vcd-guide.md)** — Using the `Verifrog.Vcd` library in your tests to parse and analyze waveform dumps.
+- **[CI Integration Guide](ci-guide.md)** — Running Verifrog tests in GitHub Actions and GitLab CI, with Verilator caching and test report publishing.
 - **[Extension Guide](extension-guide.md)** — Building design-specific convenience APIs (like `MySocSim`) on top of Verifrog.
 - **[Troubleshooting](troubleshooting.md)** — Common errors and how to fix them.
 

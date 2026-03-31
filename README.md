@@ -260,6 +260,7 @@ See the full [Configuration Reference](docs/config-reference.md).
 | [CLI Reference](docs/cli-reference.md) | `verifrog init`, `build`, `clean`, `test`, `debug`, `results` |
 | [Configuration Reference](docs/config-reference.md) | Every `verifrog.toml` section and key |
 | [Cookbook](docs/cookbook.md) | Recipes for common test patterns |
+| [CI Integration Guide](docs/ci-guide.md) | GitHub Actions, GitLab CI, caching, test report publishing |
 | [Extension Guide](docs/extension-guide.md) | Building design-specific layers on top of Verifrog |
 | [Architecture](docs/architecture.md) | Layer diagram, data flow, signal resolution internals |
 | [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | Why we made the choices we did |

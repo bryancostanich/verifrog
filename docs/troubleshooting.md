@@ -6,18 +6,22 @@ Common errors and how to fix them.
 
 ### `verilator: command not found`
 
-Verilator is not installed or not in your PATH.
+Verilator 5+ is not installed or not in your PATH.
 
 ```bash
-# macOS
+# macOS (gives 5.x)
 brew install verilator
 
-# Linux
-apt install verilator
+# Linux — Ubuntu apt has 4.x which is too old. Build from source:
+git clone https://github.com/verilator/verilator.git
+cd verilator && git checkout stable
+autoconf && ./configure && make -j$(nproc) && sudo make install
 
 # Verify
-verilator --version   # Should show 5.x+
+verilator --version   # Must show 5.x+
 ```
+
+See the [CI Integration Guide](ci-guide.md) for cached Verilator builds in CI.
 
 ### `%Error: Can't find file containing module 'my_module'`
 

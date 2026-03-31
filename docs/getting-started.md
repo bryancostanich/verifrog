@@ -9,7 +9,7 @@ Install these before starting:
 | Tool | Install (macOS) | Install (Linux) | Notes |
 |------|-----------------|-----------------|-------|
 | .NET 8+ SDK | `brew install dotnet` | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | Runtime + compiler |
-| Verilator 5+ | `brew install verilator` | `apt install verilator` | Cycle-based simulator |
+| Verilator 5+ | `brew install verilator` | [Build from source](https://verilator.org/guide/latest/install.html) | Cycle-based simulator |
 | clang++ | Included with Xcode | `apt install clang` | Or g++ on Linux |
 | Icarus Verilog | `brew install icarus-verilog` | `apt install iverilog` | Optional, for timing-accurate tests |
 

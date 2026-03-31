@@ -213,6 +213,9 @@ cmd_test() {
 
     echo "Running tests: $(basename "$test_proj")"
     echo "  Library: $lib_path"
+    if [[ -n "$category" ]]; then
+        echo "  Category: $category"
+    fi
     if [[ "$report" == true ]]; then
         echo "  Report: $report_path"
     fi

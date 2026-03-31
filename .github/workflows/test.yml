@@ -1,7 +1,7 @@
 # Verifrog CI — build RTL model and run tests
 #
-# Caches the Verilator build output keyed on RTL source hashes,
-# so rebuilds only happen when the design changes.
+# Caches both the Verilator installation and the per-design build output,
+# so most runs only execute the tests.
 
 name: Test
 
@@ -23,34 +23,61 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      - name: Install Verilator
+      # Verilator 5+ is required (--public-flat-rw). Ubuntu apt has 4.x,
+      # so we build from source and cache the installation.
+      - name: Cache Verilator install
+        id: cache-verilator
+        uses: actions/cache@v4
+        with:
+          path: /opt/verilator
+          key: verilator-stable-v2
+
+      - name: Build Verilator from source
+        if: steps.cache-verilator.outputs.cache-hit != 'true'
         run: |
           sudo apt-get update
-          sudo apt-get install -y verilator
+          sudo apt-get install -y git perl python3 make autoconf g++ flex bison ccache libgoogle-perftools-dev numactl perl-doc libfl2 libfl-dev zlib1g zlib1g-dev
+          git clone https://github.com/verilator/verilator.git /tmp/verilator
+          cd /tmp/verilator
+          git checkout stable
+          autoconf
+          ./configure --prefix=/opt/verilator
+          make -j$(nproc)
+          make install
 
-      - name: Cache Verilator build
+      - name: Add Verilator to PATH
+        run: |
+          echo "/opt/verilator/bin" >> $GITHUB_PATH
+          echo "VERILATOR_ROOT=/opt/verilator/share/verilator" >> $GITHUB_ENV
+
+      - name: Verify Verilator
+        run: verilator --version
+
+      # Runtime deps for compiling the shim
+      - name: Install build tools
+        run: sudo apt-get update && sudo apt-get install -y g++ make
+
+      # Cache the per-design simulation library
+      - name: Cache simulation build
         uses: actions/cache@v4
         with:
           path: samples/counter/build
-          key: verilator-counter-${{ hashFiles('samples/counter/rtl/**', 'samples/counter/verifrog.toml', 'src/shim/**') }}
+          key: sim-counter-${{ hashFiles('samples/counter/rtl/**', 'samples/counter/verifrog.toml', 'src/shim/**') }}
 
       - name: Build simulation library
-        run: |
-          export VERIFROG_ROOT=$PWD
-          bin/verifrog build samples/counter
+        run: bin/verifrog build samples/counter
 
       - name: Run tests
-        run: |
-          export VERIFROG_ROOT=$PWD
-          bin/verifrog test samples/counter --report test-results.md
+        run: bin/verifrog test samples/counter --report
 
       - name: Publish test report
         if: always()
         run: |
-          echo "## Test Results" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          # Skip the H1 header (first line) since we added our own
-          tail -n +2 test-results.md >> $GITHUB_STEP_SUMMARY 2>/dev/null || echo "No test report generated." >> $GITHUB_STEP_SUMMARY
+          if [ -f samples/counter/test-results.md ]; then
+            cat samples/counter/test-results.md >> $GITHUB_STEP_SUMMARY
+          else
+            echo "No test report generated." >> $GITHUB_STEP_SUMMARY
+          fi
 
       - name: Upload test artifacts
         if: always()
@@ -58,5 +85,5 @@ jobs:
         with:
           name: test-results
           path: |
-            test-results.md
+            samples/counter/test-results.md
             samples/counter/test-results.xml

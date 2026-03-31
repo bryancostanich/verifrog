@@ -21,7 +21,8 @@ ifeq ($(UNAME_S),Darwin)
     SHARED_FLAG := -dynamiclib -install_name @rpath/$(LIB_NAME)$(LIB_EXT)
 else
     LIB_EXT     := .so
-    SHARED_FLAG := -shared
+    # Embed rpath so the library can be found at runtime without LD_LIBRARY_PATH
+    SHARED_FLAG := -shared -Wl,-rpath,'$$ORIGIN'
 endif
 
 LIB_PATH := $(BUILD_DIR)/$(LIB_NAME)$(LIB_EXT)
@@ -43,8 +44,8 @@ VFLAGS := --cc --top-module $(TOP) --trace --vpi \
 # Verilator include path
 VINC := $(shell $(VERILATOR) --getenv VERILATOR_ROOT)/include
 
-# C++ compiler
-CXX      := clang++
+# C++ compiler — auto-detect: prefer clang++, fall back to g++
+CXX ?= $(shell command -v clang++ >/dev/null 2>&1 && echo clang++ || echo g++)
 CXXFLAGS := -std=c++17 -O2 -fPIC \
             -DVL_USER_STOP \
             -I$(VDIR) -I$(VINC) -I$(VINC)/vltstd -I$(BUILD_DIR)

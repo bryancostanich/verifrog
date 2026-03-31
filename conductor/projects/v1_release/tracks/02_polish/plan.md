@@ -19,3 +19,17 @@ Expecto's `testList` naming works but doesn't give formal filter tags that match
 - [x] Test result publishing (markdown to GitHub Actions summary, JUnit XML to GitLab MR widgets)
 
 Note: The markdown test report generator already exists (`verifrog test` produces it). This phase is about integrating that into CI pipelines.
+
+## CI Pain Points — resolved
+
+### Verilator version
+Ubuntu 22.04 ships Verilator 4.x. **Fixed**: workflow builds from source with `--prefix=/opt/verilator`, caches the install.
+
+### Compiler portability
+Makefile hardcoded `CXX := clang++`. **Fixed**: auto-detects compiler (prefers clang++, falls back to g++). No CI env var needed.
+
+### Library path friction
+**Fixed**: `verifrog build` now generates `.verifrog.env` with the correct library path. `verifrog test` handles paths automatically. `dotnet test` works with absolute paths.
+
+### dotnet test vs dotnet run
+**Fixed**: added `Microsoft.NET.Test.Sdk`, `IsTestProject`, and `GenerateProgramFile=false` to the test project. Both `dotnet test` and `dotnet run` now work. `verifrog test` uses `dotnet run` for Expecto's native output.

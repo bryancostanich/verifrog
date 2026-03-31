@@ -182,7 +182,14 @@ let private doBuild (projectDir: string) =
         let (rc, stdout, stderr) = runCmd "make" makeArgs projectRoot
 
         if rc = 0 then
-            printfn "  Built: %s/libverifrog_sim%s" buildDir (if OperatingSystem.IsMacOS() then ".dylib" else ".so")
+            let libExt = if OperatingSystem.IsMacOS() then ".dylib" else ".so"
+            printfn "  Built: %s/libverifrog_sim%s" buildDir libExt
+
+            // Write .env file so IDEs and manual dotnet run can find the library
+            let envPath = Path.Combine(projectRoot, ".verifrog.env")
+            let pathVar = if OperatingSystem.IsMacOS() then "DYLD_LIBRARY_PATH" else "LD_LIBRARY_PATH"
+            File.WriteAllText(envPath, $"{pathVar}={buildDir}\n")
+
             0
         else
             eprintfn "Build failed:"

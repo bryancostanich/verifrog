@@ -105,3 +105,8 @@ verifrog.toml [iverilog].testbenches
 ```
 
 Both backends run under one `dotnet test` invocation via Expecto.
+
+## Further reading
+
+- [Architecture Decisions](ARCHITECTURE_DECISIONS.md) — Why direct pointers over VPI, memcpy checkpoints, and other non-obvious choices
+- [Extension Guide](extension-guide.md) — How to build design-specific layers on top of this architecture

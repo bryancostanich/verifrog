@@ -1,102 +1,192 @@
 # Verifrog
 
-An open-source Verilog testing framework in F#. Drive your hardware designs through Verilator and Icarus Verilog with structured access to signals, memories, and registers — all from `dotnet test`.
+An open-source Verilog/SystemVerilog testing and debugging framework in F#. Drive your RTL designs through [Verilator](https://verilator.org) and [Icarus Verilog](http://iverilog.icarus.com/) with type-safe, structured access to signals, memories, and registers — all from `dotnet test`.
+
+**Why Verifrog?** Traditional Verilog testbenches are tedious to write and limited in expressiveness. UVM is powerful but heavyweight. Verifrog gives you the speed of Verilator with the ergonomics of a modern programming language — F# with Expecto — so you can write tests that read like specifications, and interactively debug your hardware with tools that don't exist in traditional HDL workflows.
+
+### Testing
+
+Write structured, readable tests in F# that compile and run your RTL through Verilator. Read and write any signal, memory, or register by name. Assert values with clear failure messages. Run Verilator and Icarus Verilog tests side-by-side under a single `dotnet test`.
+
+### Interactive debugging
+
+Verifrog's simulation model is fully controllable from code — you can pause at any point, inspect every signal in the design, and step forward cycle-by-cycle. But the real power is in the tools built on top of this:
+
+- **Checkpoint/Restore** — Snapshot the entire simulation state (every register, every memory cell) and restore it later in microseconds. Hit a bug at cycle 50,000? Save a checkpoint before the failure, then repeatedly restore and probe different signals without re-running the simulation from scratch.
+
+- **Fork** — Explore a what-if scenario and automatically snap back. "What would happen if I forced this signal high?" Fork runs your experiment, captures the result, and restores the original state — so you can try multiple hypotheses from the same point without manual save/restore.
+
+- **Compare and Sweep** — Run two configurations side-by-side from the same state (`Compare`), or sweep a parameter across many values (`Sweep`). Both use checkpoints internally to ensure each scenario starts from identical state.
+
+- **Signal forcing** — Override any internal signal and hold it across clock cycles. Inject faults, disable clock gating, force a bus value — then release and watch the design recover.
+
+- **Tracing and RunUntil** — Record signal values over a window of cycles (`Trace`), or advance the simulation until a condition is met (`RunUntil`, `RunUntilSignal`). No more guessing how many cycles to step.
+
+- **VCD waveform analysis** — Parse simulation waveform dumps and query them programmatically: find when a signal first changed, count pulses, check timing relationships, verify FSM state coverage. Available as both a library (`Verifrog.Vcd`) for use in tests and a command-line tool (`verifrog-vcd`) for quick analysis.
 
 ## Quick Start
 
 ### Prerequisites
 
 - [.NET 8+ SDK](https://dotnet.microsoft.com/download)
-- [Verilator](https://verilator.org/guide/latest/install.html) (5.x+)
-- [Icarus Verilog](http://iverilog.icarus.com/) (optional, for timing-accurate tests)
-- clang++ (macOS) or g++ (Linux)
+- [Verilator 5+](https://verilator.org/guide/latest/install.html)
+- clang++ (macOS, included with Xcode) or g++ (Linux)
+- [Icarus Verilog](http://iverilog.icarus.com/) (optional, for timing-accurate testbenches)
 
-### Install and run
+### Try the counter sample
 
 ```bash
-# Clone
-git clone https://github.com/your-org/verifrog.git
+git clone https://github.com/bryancostanich/verifrog.git
 cd verifrog
-
-# Initialize a new project
 export VERIFROG_ROOT=$PWD
-dotnet run --project src/Verifrog.Cli -- init my_project
-cd my_project
 
-# Edit verifrog.toml with your design info, then:
-verifrog build
-dotnet test tests/
-```
-
-### Or use the counter sample directly
-
-```bash
-export VERIFROG_ROOT=$PWD
+# Build the Verilator model for the counter sample
 dotnet run --project src/Verifrog.Cli -- build samples/counter
+
+# Run the tests
 DYLD_LIBRARY_PATH=samples/counter/build dotnet test tests/Verifrog.Tests
 ```
 
+### Start a new project
+
+```bash
+export VERIFROG_ROOT=/path/to/verifrog
+cd your-project
+
+# Scaffold test infrastructure
+dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- init .
+
+# Edit verifrog.toml with your design, then:
+dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- build
+DYLD_LIBRARY_PATH=build dotnet test tests/
+```
+
+See the full [Getting Started Guide](docs/getting-started.md) for a step-by-step walkthrough.
+
 ## What it looks like
+
+### Writing a test
 
 ```fsharp
 open Verifrog.Sim
 open Verifrog.Runner
 
-let tests = testList "ALU" [
-    test "add produces correct result" {
+let tests = testList "counter" [
+    test "counts to 10 when enabled" {
         use sim = SimFixture.create ()
-        sim.Write("alu_op", 0L) |> ignore    // ADD
-        sim.Write("rd_addr_a", 0L) |> ignore  // R0
-        sim.Write("rd_addr_b", 1L) |> ignore  // R1
-        sim.Write("alu_start", 1L) |> ignore
-        sim.Step(2)
-        Expect.signal sim "alu_result" 59L "42 + 17 = 59"
+        sim.Write("enable", 1L) |> ignore
+        sim.Step(10)
+        Expect.signal sim "count" 10L "count should reach 10"
     }
 ]
+```
+
+### Debugging with checkpoints and Fork
+
+Save simulation state, run forward, restore, try something different — all in code:
+
+```fsharp
+test "investigate overflow behavior" {
+    use sim = SimFixture.create ()
+    sim.Write("enable", 1L) |> ignore
+    sim.Step(200)
+
+    // Save state right before the interesting part
+    let cp = sim.SaveCheckpoint("before_overflow")
+
+    // Run forward and observe
+    sim.Step(60)
+    let count = sim.ReadOrFail("count")
+    let overflowed = sim.ReadOrFail("overflow")
+    printfn "After 60 more cycles: count=%d overflow=%d" count overflowed
+
+    // Restore and try a different approach
+    sim.RestoreCheckpoint("before_overflow")
+
+    // What if we load a value near the limit?
+    let result = sim.Fork(fun s ->
+        s.Write("load_en", 1L) |> ignore
+        s.Write("load_value", 250L) |> ignore
+        s.Step(1)
+        s.Write("load_en", 0L) |> ignore
+        s.Step(10)
+        s.ReadOrFail("overflow"))
+    // sim is back to "before_overflow" — Fork restored automatically
+
+    // Sweep across multiple load values to find the boundary
+    let results = sim.Sweep(
+        [248L; 249L; 250L; 251L; 252L],
+        fun loadVal s ->
+            s.Write("load_en", 1L) |> ignore
+            s.Write("load_value", loadVal) |> ignore
+            s.Step(1)
+            s.Write("load_en", 0L) |> ignore
+            s.Step(10)
+            s.ReadOrFail("overflow"))
+
+    for (loadVal, overflow) in results do
+        printfn "  load=%d -> overflow=%d" loadVal overflow
+}
+```
+
+### Analyzing waveforms
+
+```fsharp
+test "verify timing with VCD analysis" {
+    use sim = SimFixture.create ()
+    // ... run stimulus ...
+
+    let vcd = VcdParser.parseAll "output/sim.vcd"
+
+    // When did the FSM first enter state 5?
+    let t = VcdParser.firstTimeAtValue vcd "fsm_state" 5
+    // How many times did overflow pulse?
+    let pulses = VcdParser.highPulseCount vcd "counter.overflow"
+    // What states did the FSM visit?
+    let states = VcdParser.uniqueValues vcd "fsm_state"
+}
 ```
 
 ## Architecture
 
 ```
-User's Test Project (Expecto)
+Your Test Project (Expecto)
   |
   v
 Verifrog.Runner   — SimFixture, Iverilog backend, Expect helpers
   |
   v
-Verifrog.Sim      — Sim type, Memory/Register access, TOML config
+Verifrog.Sim      — Sim type, Memory/Register accessors, TOML config
   |
   v
-libverifrog_sim   — Generic Verilator C wrapper (built per-design)
+libverifrog_sim   — Generic Verilator C++ wrapper (built per-design)
   |
   v
-Verilator         — User's compiled RTL
+Verilator         — Your compiled RTL
 ```
-
-**Verifrog.Vcd** is a standalone VCD parser library, usable independently.
 
 ## Components
 
-| Library | Purpose |
+| Library | What it does |
 |---|---|
-| **Verifrog.Sim** | Core simulation API: Create, Reset, Step, Read/Write, Checkpoint, Force, Memory, Register |
-| **Verifrog.Vcd** | VCD waveform parser: parse, query signals, value-at-time, transitions |
-| **Verifrog.Runner** | Test infrastructure: SimFixture, Iverilog backend, Expect helpers |
-| **verifrog CLI** | Build tool: `verifrog init`, `verifrog build`, `verifrog clean` |
-| **libverifrog_sim** | C shim: generic Verilator wrapper compiled per-design |
+| **Verifrog.Sim** | Core simulation API: create, step, read/write signals, checkpoint/restore, force, fork/sweep, memory/register access |
+| **Verifrog.Runner** | Test infrastructure: SimFixture lifecycle, Iverilog backend, Expect assertions |
+| **Verifrog.Vcd** | Standalone VCD waveform parser: parse files, query signals, value-at-time, transitions, timing analysis |
+| **Verifrog.Vcd.Cli** | Command-line VCD analysis tool with text and JSON output |
+| **verifrog CLI** | Build tool: `init` scaffolds a project, `build` compiles RTL through Verilator, `clean` removes artifacts |
+| **libverifrog_sim** | Design-agnostic C++ shim: signal discovery, direct-pointer access, checkpoint via memcpy |
 
 ## Configuration
 
-All configuration lives in `verifrog.toml`. See [docs/config-reference.md](docs/config-reference.md).
+All project configuration lives in `verifrog.toml`:
 
 ```toml
 [design]
 top = "my_module"
-sources = ["src/rtl/*.v"]
+sources = ["rtl/*.v"]
 
 [test]
 output = "build"
-test_output = "test_output"  # VCD traces, logs (default: same as output)
 
 [memories.data_ram]
 path = "u_ram.mem"
@@ -105,46 +195,43 @@ depth = 1024
 width = 32
 
 [registers]
-path = "u_regfile.mem"
+path = "u_regfile.regs"
 width = 8
 
 [registers.map]
-CTRL = 0x00
+CTRL   = 0x00
 STATUS = 0x01
+DATA   = 0x02
 ```
+
+See the full [Configuration Reference](docs/config-reference.md).
 
 ## Samples
 
-| Sample | What it shows |
+| Sample | What it demonstrates |
 |---|---|
-| [counter](samples/counter/) | Minimal: step, read, write, checkpoint |
-| [alu_regfile](samples/alu_regfile/) | Register map in TOML, named access |
-| [sram](samples/sram/) | Memory regions, bank/addr access |
-| [iverilog_tb](samples/iverilog_tb/) | Dual-backend, Verilog testbench |
-
-## Extension Model
-
-Verifrog provides generic access. Build design-specific APIs in your own repo:
-
-```fsharp
-type MySocSim(sim: Sim) =
-    member _.StartDma(src, dst, len) =
-        sim.Register("DMA_SRC").Write(src)
-        sim.Register("DMA_DST").Write(dst)
-        sim.Register("DMA_LEN").Write(len)
-        sim.Register("DMA_CTRL").Write(0x01)
-```
-
-See [docs/extension-guide.md](docs/extension-guide.md).
+| [counter](samples/counter/) | Minimal: step, read/write, checkpoint, force, fork |
+| [alu_regfile](samples/alu_regfile/) | TOML register map, named register access, parametric sweep |
+| [sram](samples/sram/) | TOML memory regions, banked access, backdoor loading |
+| [iverilog_tb](samples/iverilog_tb/) | Dual-backend: Verilator + iverilog under one `dotnet test` |
+| [i2c_bfm](samples/i2c_bfm/) | Protocol-level BFM with auto-detection, timing-accurate I2C |
 
 ## Documentation
 
-- [Getting Started](docs/getting-started.md)
-- [API Reference](docs/api-reference.md)
-- [Configuration Reference](docs/config-reference.md)
-- [Extension Guide](docs/extension-guide.md)
-- [Architecture](docs/architecture.md)
-- [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md)
+| Guide | For |
+|---|---|
+| [Getting Started](docs/getting-started.md) | First-time setup, end-to-end walkthrough |
+| [Core Concepts](docs/concepts.md) | How signals, checkpoints, forces, memories, and registers work |
+| [API Reference](docs/api-reference.md) | Every method on Sim, Memory, Register, Expect, and more |
+| [VCD Parser Guide](docs/vcd-guide.md) | Using the VCD library to analyze waveforms |
+| [VCD CLI Reference](docs/vcd-cli.md) | Command-line VCD analysis tool |
+| [CLI Reference](docs/cli-reference.md) | `verifrog init`, `build`, `clean` |
+| [Configuration Reference](docs/config-reference.md) | Every `verifrog.toml` section and key |
+| [Cookbook](docs/cookbook.md) | Recipes for common test patterns |
+| [Extension Guide](docs/extension-guide.md) | Building design-specific layers on top of Verifrog |
+| [Architecture](docs/architecture.md) | Layer diagram, data flow, signal resolution internals |
+| [Architecture Decisions](docs/ARCHITECTURE_DECISIONS.md) | Why we made the choices we did |
+| [Troubleshooting](docs/troubleshooting.md) | Common errors and how to fix them |
 
 ## License
 

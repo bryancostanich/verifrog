@@ -1,59 +1,122 @@
-# Getting Started with Verifrog
+# Getting Started
 
-This guide walks through setting up Verifrog with a real Verilog design.
+This guide walks you through setting up Verifrog, building a Verilog design, writing tests, and running them. By the end you'll have a working test that reads and writes signals, uses checkpoints, and verifies behavior.
 
 ## Prerequisites
 
 Install these before starting:
 
-- **.NET 8+ SDK**: `brew install dotnet` (macOS) or see [dotnet.microsoft.com](https://dotnet.microsoft.com/download)
-- **Verilator 5+**: `brew install verilator` (macOS) or [verilator.org](https://verilator.org/guide/latest/install.html)
-- **clang++** (macOS, included with Xcode) or **g++** (Linux)
-- **Icarus Verilog** (optional): `brew install icarus-verilog` — only needed for timing-accurate testbenches
+| Tool | Install (macOS) | Install (Linux) | Notes |
+|------|-----------------|-----------------|-------|
+| .NET 8+ SDK | `brew install dotnet` | [dotnet.microsoft.com](https://dotnet.microsoft.com/download) | Runtime + compiler |
+| Verilator 5+ | `brew install verilator` | `apt install verilator` | Cycle-based simulator |
+| clang++ | Included with Xcode | `apt install clang` | Or g++ on Linux |
+| Icarus Verilog | `brew install icarus-verilog` | `apt install iverilog` | Optional, for timing-accurate tests |
+
+Verify your installations:
+
+```bash
+dotnet --version    # 8.0.x or higher
+verilator --version # Verilator 5.x or higher
+```
 
 ## Step 1: Clone Verifrog
 
 ```bash
-git clone https://github.com/your-org/verifrog.git
-export VERIFROG_ROOT=$(pwd)/verifrog
+git clone https://github.com/bryancostanich/verifrog.git
+cd verifrog
+export VERIFROG_ROOT=$PWD
 ```
 
-## Step 2: Initialize your project
+## Step 2: Try the counter sample
+
+Before setting up your own project, make sure everything works with the included counter sample.
+
+### Build the simulation library
 
 ```bash
-cd your-project
+dotnet run --project src/Verifrog.Cli -- build samples/counter
+```
+
+This runs Verilator on the counter RTL, compiles the generic C++ shim, and links everything into a shared library. You should see output like:
+
+```
+[verifrog] Reading config: samples/counter/verifrog.toml
+[verifrog] Top module: counter
+[verifrog] Running Verilator...
+[verifrog] Compiling shim...
+[verifrog] Built: samples/counter/build/libverifrog_sim.dylib
+```
+
+### Run the tests
+
+```bash
+DYLD_LIBRARY_PATH=samples/counter/build dotnet test tests/Verifrog.Tests
+```
+
+On Linux, use `LD_LIBRARY_PATH` instead of `DYLD_LIBRARY_PATH`.
+
+You should see passing tests:
+
+```
+Passed!  - Failed:  0, Passed:  X, Skipped:  0
+```
+
+## Step 3: Initialize your own project
+
+Now set up Verifrog for your own Verilog design.
+
+```bash
+cd /path/to/your-project
 dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- init .
 ```
 
 This creates:
-- `verifrog.toml` — design configuration
-- `tests/` — sample F# test project
 
-## Step 3: Configure your design
+```
+your-project/
+  verifrog.toml        # Design configuration (edit this)
+  tests/
+    Tests.fs           # Sample test file
+    Tests.fsproj       # F# project referencing Verifrog
+```
 
-Edit `verifrog.toml`:
+## Step 4: Configure your design
+
+Edit `verifrog.toml` to point at your RTL:
 
 ```toml
 [design]
-top = "my_counter"           # Your Verilog top module name
-sources = ["rtl/my_counter.v"]  # Path(s) to your RTL files
+top = "my_counter"                 # Your top-level Verilog module name
+sources = ["rtl/my_counter.v"]     # Path(s) to your RTL source files
 
 [verilator]
-flags = ["--trace"]          # Verilator flags (--trace enables VCD)
+flags = ["--trace"]                # Enable VCD waveform tracing
 
 [test]
-output = "build"             # Build artifact directory
+output = "build"                   # Where build artifacts go
 ```
 
-## Step 4: Build the simulation library
+The `top` field must exactly match your Verilog `module` declaration. The `sources` field supports glob patterns like `"rtl/**/*.v"`.
+
+## Step 5: Build the simulation library
 
 ```bash
 dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- build
 ```
 
-This runs Verilator on your RTL, compiles the generic C shim, and links everything into `build/libverifrog_sim.dylib` (macOS) or `.so` (Linux).
+This:
+1. Reads `verifrog.toml` to find your top module and sources
+2. Runs Verilator with `--cc --public-flat-rw --trace` to compile your RTL to C++
+3. Generates a `verifrog_model.h` header that binds the generic shim to your design
+4. Compiles everything into `build/libverifrog_sim.dylib` (macOS) or `.so` (Linux)
 
-## Step 5: Write your first test
+If the build fails, check:
+- Your Verilog has no syntax errors (`verilator --lint-only your_file.v`)
+- The `top` in `verifrog.toml` matches your module name exactly
+- All source files exist at the paths listed in `sources`
+
+## Step 6: Write your first test
 
 Edit `tests/Tests.fs`:
 
@@ -66,54 +129,88 @@ open Verifrog.Runner
 
 [<Tests>]
 let tests = testList "my_counter" [
+
+    test "starts at zero after reset" {
+        use sim = SimFixture.create ()
+        // SimFixture.create() loads the library, resets for 10 cycles,
+        // and suppresses $display output. sim is IDisposable.
+        Expect.signal sim "count" 0L "count should be 0 after reset"
+    }
+
     test "counts when enabled" {
         use sim = SimFixture.create ()
         sim.Write("enable", 1L) |> ignore
         sim.Step(10)
-        Expect.signal sim "count" 10L "count should be 10"
+        Expect.signal sim "count" 10L "should have counted to 10"
     }
 
-    test "checkpoint and restore" {
+    test "checkpoint saves and restores state" {
         use sim = SimFixture.create ()
         sim.Write("enable", 1L) |> ignore
         sim.Step(5)
-        let cp = sim.SaveCheckpoint("mid", "count=5")
+        Expect.signal sim "count" 5L "count is 5"
+
+        // Save state
+        let cp = sim.SaveCheckpoint("halfway")
+
+        // Continue running
         sim.Step(5)
         Expect.signal sim "count" 10L "count reaches 10"
-        sim.RestoreCheckpoint("mid")
-        Expect.signal sim "count" 5L "restored to 5"
+
+        // Restore to saved state
+        sim.RestoreCheckpoint("halfway")
+        Expect.signal sim "count" 5L "back to 5 after restore"
     }
 ]
 ```
 
-Update `tests/Tests.fsproj` to reference Verifrog:
+Make sure `tests/Tests.fsproj` references Verifrog:
 
 ```xml
-<ProjectReference Include="$(VERIFROG_ROOT)/src/Verifrog.Sim/Verifrog.Sim.fsproj" />
-<ProjectReference Include="$(VERIFROG_ROOT)/src/Verifrog.Runner/Verifrog.Runner.fsproj" />
+<ItemGroup>
+  <ProjectReference Include="$(VERIFROG_ROOT)/src/Verifrog.Sim/Verifrog.Sim.fsproj" />
+  <ProjectReference Include="$(VERIFROG_ROOT)/src/Verifrog.Runner/Verifrog.Runner.fsproj" />
+</ItemGroup>
 ```
 
-## Step 6: Run tests
+## Step 7: Run your tests
 
 ```bash
-DYLD_LIBRARY_PATH=build dotnet test tests/   # macOS
-LD_LIBRARY_PATH=build dotnet test tests/      # Linux
+DYLD_LIBRARY_PATH=build dotnet test tests/    # macOS
+LD_LIBRARY_PATH=build dotnet test tests/       # Linux
 ```
 
-## Adding memory and register access
+## Adding memory access
 
-If your design has SRAM or a register file, declare them in `verifrog.toml`:
+If your design has SRAM, declare it in `verifrog.toml`:
 
 ```toml
 [memories.data_ram]
-path = "u_ram.mem"       # Hierarchical path to the memory array
-banks = 1
-depth = 256
-width = 8
+path = "u_ram.mem"         # Hierarchical path to the Verilog memory array
+banks = 1                  # Number of banks (use {bank} placeholder if > 1)
+depth = 256                # Words per bank
+width = 8                  # Bits per word
+```
 
+Then use named access in tests:
+
+```fsharp
+test "backdoor memory write and read" {
+    use sim = SimFixture.createFromToml "verifrog.toml"
+    sim.Memory("data_ram").Write(0, 42, 0xDEL)   // bank 0, addr 42, value 0xDE
+    sim.Step(1)
+    Expect.memory sim "data_ram" 0 42 0xDEL "backdoor write should stick"
+}
+```
+
+## Adding register access
+
+For register files, declare the register map:
+
+```toml
 [registers]
-path = "u_regfile.regs"  # Path to register file array
-width = 8
+path = "u_regfile.regs"   # Path to the register array
+width = 8                  # Bits per register
 
 [registers.map]
 CTRL   = 0x00
@@ -121,38 +218,41 @@ STATUS = 0x01
 DATA   = 0x02
 ```
 
-Then use named access in tests:
+Then use named registers:
 
 ```fsharp
 test "register write-read" {
     use sim = SimFixture.createFromToml "verifrog.toml"
-    sim.Register("CTRL").Write(0x42L)
+    sim.Register("CTRL").Write(0x42L) |> ignore
     sim.Step(1)
-    let v = sim.Register("CTRL").Read()
-    // ...
+    Expect.register sim "CTRL" 0x42L "CTRL should hold written value"
 }
 ```
 
 ## Adding iverilog testbenches
 
-For timing-accurate tests with Verilog testbenches:
+For timing-accurate Verilog testbenches alongside Verilator tests:
 
 ```toml
 [iverilog]
-testbenches = ["sim/*_tb.v"]
-models = ["sim/bfm_*.v"]
+testbenches = ["sim/*_tb.v"]       # Glob patterns for testbench files
+models = ["sim/bfm_*.v"]           # Supporting models (BFMs, SRAM models)
 ```
 
 ```fsharp
-test "shift register TB" {
+test "shift register timing" {
     let result = Iverilog.runSimple projectRoot config "shift_reg_tb"
     Expect.iverilogPassed result "shift register should pass"
 }
 ```
 
+Both Verilator and iverilog tests run under a single `dotnet test` invocation.
+
 ## Next steps
 
-- [API Reference](api-reference.md) — full Sim, Memory, Register, Expect API
-- [Configuration Reference](config-reference.md) — all verifrog.toml sections
-- [Extension Guide](extension-guide.md) — building design-specific layers
-- [Samples](../samples/) — working examples
+- **[Core Concepts](concepts.md)** — Understand signals, checkpoints, forces, what-if exploration
+- **[API Reference](api-reference.md)** — Full API with code examples
+- **[VCD Parser Guide](vcd-guide.md)** — Analyze waveform dumps in your tests
+- **[Cookbook](cookbook.md)** — Recipes for common test patterns
+- **[Configuration Reference](config-reference.md)** — All `verifrog.toml` options
+- **[Samples](../samples/)** — Working examples to study and modify

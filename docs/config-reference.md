@@ -1,6 +1,6 @@
 # Configuration Reference
 
-All Verifrog configuration lives in `verifrog.toml` at your project root.
+All Verifrog configuration lives in `verifrog.toml` at your project root. This file is read by `verifrog build` and by `Sim.Create(tomlPath)` / `SimFixture.createFromToml(path)` at test time.
 
 ## [design] (required)
 

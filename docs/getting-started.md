@@ -253,6 +253,34 @@ test "shift register timing" {
 
 Both Verilator and iverilog tests run under a single `dotnet test` invocation.
 
+## Organizing tests by category
+
+As your test suite grows, use hardware-domain categories to organize and filter tests:
+
+```fsharp
+open Verifrog.Runner.Category
+
+let tests = testList "MyDesign" [
+    smoke [
+        test "comes out of reset" { ... }
+    ]
+    unit [
+        test "counter increments" { ... }
+    ]
+    integration [
+        test "DMA end-to-end" { ... }
+    ]
+]
+```
+
+```bash
+verifrog test --category Smoke    # Fast sanity checks during development
+verifrog test --category Unit     # Before committing
+verifrog test                     # Everything (CI)
+```
+
+Categories: `Smoke`, `Unit`, `Parametric`, `Integration`, `Stress`, `Golden`, `Regression`. See [Core Concepts](concepts.md#test-categories) for details.
+
 ## Next steps
 
 - **[Core Concepts](concepts.md)** — Understand signals, checkpoints, forces, what-if exploration

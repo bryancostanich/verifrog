@@ -6,7 +6,7 @@
 
 1. **[Getting Started](getting-started.md)** — Install prerequisites, build your first design, write and run your first test. Takes about 15 minutes.
 
-2. **[Core Concepts](concepts.md)** — Understand how Verifrog works: signals, simulation control, checkpoints, forces, memories, registers, and what-if exploration.
+2. **[Core Concepts](concepts.md)** — Understand how Verifrog works: signals, simulation control, checkpoints, forces, memories, registers, what-if exploration, and test categories.
 
 3. **[Cookbook](cookbook.md)** — Copy-paste recipes for common patterns: testing a state machine, sweeping parameters, debugging with VCD, and more.
 
@@ -14,7 +14,7 @@
 
 - **[API Reference](api-reference.md)** — Every method on `Sim`, `MemoryAccessor`, `RegisterAccessor`, `SimFixture`, `Expect`, `Iverilog`, and `VcdParser`, with code examples.
 - **[Configuration Reference](config-reference.md)** — All `verifrog.toml` sections and keys.
-- **[CLI Reference](cli-reference.md)** — `verifrog init`, `build`, and `clean` commands.
+- **[CLI Reference](cli-reference.md)** — `verifrog init`, `build`, `clean`, `test`, `debug`, `results` commands.
 - **[VCD CLI Reference](vcd-cli.md)** — The `verifrog-vcd` command-line analysis tool.
 
 ## Guides

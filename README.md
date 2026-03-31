@@ -147,6 +147,38 @@ test "verify timing with VCD analysis" {
 }
 ```
 
+## Test organization
+
+Verifrog provides hardware-domain test categories so you can run the right tests at the right time:
+
+```bash
+verifrog test --category Smoke          # Quick sanity — design is alive (seconds)
+verifrog test --category Unit           # Focused signal/block tests
+verifrog test --category Integration    # Multi-block data flow
+verifrog test --category Parametric     # Sweeps and value ranges
+verifrog test                           # Everything
+```
+
+Categories are lightweight `testList` wrappers — just group your tests:
+
+```fsharp
+open Verifrog.Runner.Category
+
+let tests = testList "MySoC" [
+    smoke [
+        test "comes out of reset" { ... }
+    ]
+    unit [
+        test "counter increments" { ... }
+    ]
+    golden [
+        test "matches reference output" { ... }
+    ]
+]
+```
+
+Also available: `stress` (long-running), `golden` (reference outputs), `regression` (bug-fix coverage).
+
 ## Architecture
 
 ```
@@ -170,7 +202,7 @@ Verilator         — Your compiled RTL
 | Library | What it does |
 |---|---|
 | **Verifrog.Sim** | Core simulation API: create, step, read/write signals, checkpoint/restore, force, fork/sweep, memory/register access |
-| **Verifrog.Runner** | Test infrastructure: SimFixture lifecycle, Iverilog backend, Expect assertions |
+| **Verifrog.Runner** | Test infrastructure: SimFixture lifecycle, Iverilog backend, Expect assertions, test categories (Smoke/Unit/Parametric/Integration/Stress/Golden/Regression) |
 | **Verifrog.Vcd** | Standalone VCD waveform parser: parse files, query signals, value-at-time, transitions, timing analysis |
 | **Verifrog.Vcd.Cli** | Command-line VCD analysis tool with text and JSON output |
 | **verifrog CLI** | Build tool: `init` scaffolds a project, `build` compiles RTL through Verilator, `clean` removes artifacts |
@@ -225,7 +257,7 @@ See the full [Configuration Reference](docs/config-reference.md).
 | [API Reference](docs/api-reference.md) | Every method on Sim, Memory, Register, Expect, and more |
 | [VCD Parser Guide](docs/vcd-guide.md) | Using the VCD library to analyze waveforms |
 | [VCD CLI Reference](docs/vcd-cli.md) | Command-line VCD analysis tool |
-| [CLI Reference](docs/cli-reference.md) | `verifrog init`, `build`, `clean` |
+| [CLI Reference](docs/cli-reference.md) | `verifrog init`, `build`, `clean`, `test`, `debug`, `results` |
 | [Configuration Reference](docs/config-reference.md) | Every `verifrog.toml` section and key |
 | [Cookbook](docs/cookbook.md) | Recipes for common test patterns |
 | [Extension Guide](docs/extension-guide.md) | Building design-specific layers on top of Verifrog |

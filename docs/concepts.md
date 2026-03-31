@@ -308,6 +308,61 @@ let (found, cycle) = sim.RunUntil(
     5000)
 ```
 
+## Test categories
+
+Verifrog provides hardware-domain test categories that map to how verification engineers think about their test suites. Categories are `testList` wrappers — they create named groups in Expecto's test hierarchy.
+
+### Available categories
+
+| Category | Purpose | Typical runtime |
+|----------|---------|-----------------|
+| `smoke` | Quick sanity — is the design alive? | Seconds |
+| `unit` | Focused tests for individual signals, blocks, or operations | Seconds to minutes |
+| `parametric` | Sweeps, value ranges, `Sim.Sweep`/`Sim.Compare` | Minutes |
+| `integration` | Multi-block interactions, bus protocols, end-to-end flow | Minutes |
+| `stress` | Long-running: deep pipelines, large memories, many iterations | Minutes to hours |
+| `golden` | Reference output comparisons against known-good data | Varies |
+| `regression` | Bug-fix coverage — each test tied to a specific issue | Varies |
+
+### Using categories
+
+```fsharp
+open Verifrog.Runner.Category
+
+let tests = testList "MyDesign" [
+    smoke [
+        test "comes out of reset" {
+            use sim = SimFixture.create ()
+            Expect.signal sim "count" 0L "zero after reset"
+        }
+    ]
+    unit [
+        test "counter increments" {
+            use sim = SimFixture.create ()
+            sim.Write("enable", 1L) |> ignore
+            sim.Step(10)
+            Expect.signal sim "count" 10L "counted to 10"
+        }
+    ]
+    regression [
+        test "issue-42: overflow at boundary" {
+            use sim = SimFixture.create ()
+            // ...
+        }
+    ]
+]
+```
+
+### Filtering by category
+
+```bash
+verifrog test --category Smoke       # Run only smoke tests
+verifrog test --category Unit        # Run only unit tests
+verifrog test                        # Run all categories
+```
+
+A typical workflow: run `Smoke` during development for fast feedback, `Unit` before committing, and everything in CI.
+
 ## Iverilog backend
 
 Verifrog supports running traditional Verilog testbenches through Icarus Verilog alongside Verilator-based F# tests. This gives you:

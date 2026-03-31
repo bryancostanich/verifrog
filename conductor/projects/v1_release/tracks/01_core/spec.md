@@ -33,70 +33,70 @@ The following are battle-tested in khalkulo's 150-test suite and should be prese
 
 ### Verifrog.Sim (F# library)
 
-- [ ] `Sim` type: Create, Reset, Step, Read, Write, SignalBits, ListSignals
-- [ ] Checkpoint/Restore: SaveCheckpoint, RestoreCheckpoint (named snapshots)
-- [ ] Force/Release: hold signals at values, release
-- [ ] Signal validation: ValidateSignals checks all declared paths exist at startup
-- [ ] Memory access: `sim.Memory("name").Read(bank, addr)` / `.Write(bank, addr, value)` driven from TOML config
-- [ ] Register access: `sim.Register("NAME").Read()` / `.Write(value)` driven from TOML config
-- [ ] P/Invoke bindings to libverifrog_sim (extracted from khalkulo Interop.fs)
-- [ ] TOML config parser (reads `verifrog.toml`, builds memory/register maps, `test_output` for VCD/log directory)
+- [x]`Sim` type: Create, Reset, Step, Read, Write, SignalBits, ListSignals
+- [x]Checkpoint/Restore: SaveCheckpoint, RestoreCheckpoint (named snapshots)
+- [x]Force/Release: hold signals at values, release
+- [x]Signal validation: ValidateSignals checks all declared paths exist at startup
+- [x]Memory access: `sim.Memory("name").Read(bank, addr)` / `.Write(bank, addr, value)` driven from TOML config
+- [x]Register access: `sim.Register("NAME").Read()` / `.Write(value)` driven from TOML config
+- [x]P/Invoke bindings to libverifrog_sim (extracted from khalkulo Interop.fs)
+- [x]TOML config parser (reads `verifrog.toml`, builds memory/register maps, `test_output` for VCD/log directory)
 
 ### libverifrog_sim (C shim)
 
-- [ ] Generic Verilator wrapper: sim_create, sim_destroy, sim_reset, sim_step
-- [ ] Signal access: sim_read, sim_write, sim_force, sim_release by hierarchical name
-- [ ] Signal enumeration: sim_signal_count, sim_signal_name, sim_signal_bits
-- [ ] Checkpoint: sim_checkpoint, sim_restore, sim_checkpoint_free
-- [ ] Display suppression: sim_suppress_display
-- [ ] No design-specific code — everything resolved by name at runtime
-- [ ] Extracted from khalkulo sim_shim.cpp, removing WgtWrite/ActWrite/MacRead etc.
+- [x]Generic Verilator wrapper: sim_create, sim_destroy, sim_reset, sim_step
+- [x]Signal access: sim_read, sim_write, sim_force, sim_release by hierarchical name
+- [x]Signal enumeration: sim_signal_count, sim_signal_name, sim_signal_bits
+- [x]Checkpoint: sim_checkpoint, sim_restore, sim_checkpoint_free
+- [x]Display suppression: sim_suppress_display
+- [x]No design-specific code — everything resolved by name at runtime
+- [x]Extracted from khalkulo sim_shim.cpp, removing WgtWrite/ActWrite/MacRead etc.
 
 ### Verifrog.Vcd (F# library)
 
-- [ ] VCD parser: parse multi-GB files efficiently
-- [ ] Signal query by name/pattern
-- [ ] Value-at-time lookup
-- [ ] Transition counting and timing analysis
-- [ ] Extracted from khalkulo vcd_parser, packaged as a library (not just a CLI)
+- [x]VCD parser: parse multi-GB files efficiently
+- [x]Signal query by name/pattern
+- [x]Value-at-time lookup
+- [x]Transition counting and timing analysis
+- [x]Extracted from khalkulo vcd_parser, packaged as a library (not just a CLI)
 
 ### Verifrog.Runner (F# library)
 
 Generalized from khalkulo's `tests/Fixtures/`:
 
-- [ ] SimFixture: create instance, reset, checkpoint Level 0, restore per test. Reads lib path and config from `verifrog.toml` instead of hardcoded paths.
-- [ ] Verilator backend: creates Sim instances, manages fixtures, runs Expecto tests
-- [ ] Iverilog backend: compile, run vvp, capture stdout, parse pass/fail. Reads source paths from `verifrog.toml` instead of hardcoded `source/rtl/`.
-- [ ] Iverilog auto-discovery: scan testbench directories from TOML `[iverilog].testbenches` glob
-- [ ] Iverilog parameter override: pass Verilog parameters at compile time (proven: `I2C_HALF_PERIOD`)
-- [ ] Iverilog extra sources: auto-detect BFM/model dependencies or declare in TOML `[iverilog].models`
-- [ ] Expect helpers: Expect.signal, Expect.memory, Expect.register with readable failure output (signal name, expected/actual, cycle count)
-- [ ] Parallel execution: separate Verilator instances per test list
-- [ ] `dotnet test` integration via YoloDev.Expecto.TestSdk
+- [x]SimFixture: create instance, reset, checkpoint Level 0, restore per test. Reads lib path and config from `verifrog.toml` instead of hardcoded paths.
+- [x]Verilator backend: creates Sim instances, manages fixtures, runs Expecto tests
+- [x]Iverilog backend: compile, run vvp, capture stdout, parse pass/fail. Reads source paths from `verifrog.toml` instead of hardcoded `source/rtl/`.
+- [x]Iverilog auto-discovery: scan testbench directories from TOML `[iverilog].testbenches` glob
+- [x]Iverilog parameter override: pass Verilog parameters at compile time (proven: `I2C_HALF_PERIOD`)
+- [x]Iverilog extra sources: auto-detect BFM/model dependencies or declare in TOML `[iverilog].models`
+- [x]Expect helpers: Expect.signal, Expect.memory, Expect.register with readable failure output (signal name, expected/actual, cycle count)
+- [x]Parallel execution: separate Verilator instances per test list
+- [x]`dotnet test` integration via YoloDev.Expecto.TestSdk
 
 ### verifrog CLI
 
-- [ ] `verifrog build` — reads `verifrog.toml`, runs Verilator on declared sources, compiles C shim, links shared library into `[test].output` directory
-- [ ] `verifrog clean` — remove build artifacts
-- [ ] `verifrog init` — scaffold a new project (create `verifrog.toml` template, sample test file, sample .fsproj)
-- [ ] F# dotnet tool, installable via `dotnet tool install`
+- [x]`verifrog build` — reads `verifrog.toml`, runs Verilator on declared sources, compiles C shim, links shared library into `[test].output` directory
+- [x]`verifrog clean` — remove build artifacts
+- [x]`verifrog init` — scaffold a new project (create `verifrog.toml` template, sample test file, sample .fsproj)
+- [x]F# dotnet tool, installable via `dotnet tool install`
 
 ### Documentation
 
-- [ ] README.md: what Verifrog is, quick start, architecture overview
-- [ ] Getting Started guide: install deps, `verifrog init`, write first test, run it
-- [ ] API reference: Sim, Memory, Register, Checkpoint, Force, Expect helpers
-- [ ] Configuration reference: `verifrog.toml` format, all sections
-- [ ] Extension guide: how to build design-specific APIs on top of Verifrog (using khalkulo as the example)
-- [ ] Architecture doc: how the layers connect (F# → P/Invoke → C shim → Verilator)
+- [x]README.md: what Verifrog is, quick start, architecture overview
+- [x]Getting Started guide: install deps, `verifrog init`, write first test, run it
+- [x]API reference: Sim, Memory, Register, Checkpoint, Force, Expect helpers
+- [x]Configuration reference: `verifrog.toml` format, all sections
+- [x]Extension guide: how to build design-specific APIs on top of Verifrog (using khalkulo as the example)
+- [x]Architecture doc: how the layers connect (F# → P/Invoke → C shim → Verilator)
 
 ### Sample Projects
 
-- [ ] **Minimal**: simple counter module, 3-4 tests demonstrating Sim basics (step, read, write, checkpoint)
-- [ ] **With registers**: ALU or small SoC with a register file, demonstrates register map access from TOML
-- [ ] **With memory**: design with SRAM, demonstrates memory region access from TOML
-- [ ] **With iverilog**: design with a Verilog testbench (BFM, timing), demonstrates dual-backend runner and auto-discovery
-- [ ] Each sample includes its own `verifrog.toml`, test project, and README
+- [x]**Minimal**: simple counter module, 3-4 tests demonstrating Sim basics (step, read, write, checkpoint)
+- [x]**With registers**: ALU or small SoC with a register file, demonstrates register map access from TOML
+- [x]**With memory**: design with SRAM, demonstrates memory region access from TOML
+- [x]**With iverilog**: design with a Verilog testbench (BFM, timing), demonstrates dual-backend runner and auto-discovery
+- [x]Each sample includes its own `verifrog.toml`, test project, and README
 
 ## Architecture
 

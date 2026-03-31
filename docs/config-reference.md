@@ -37,10 +37,16 @@ models = ["src/sim/bfm_*.v"]       # Supporting model files (BFMs, memory models
 
 ```toml
 [test]
-output = "build"    # Directory for build artifacts (default: "build")
+output = "build"              # Directory for build artifacts (default: "build")
+test_output = "test_output"   # Directory for test output: VCD traces, logs (default: same as output)
 ```
 
-The `verifrog build` command places `libverifrog_sim.dylib/.so` and Verilator intermediates here. `verifrog clean` removes this directory.
+| Key | Default | Description |
+|-----|---------|-------------|
+| `output` | `"build"` | Build artifacts (`.vvp`, Verilator intermediates, `libverifrog_sim`) |
+| `test_output` | same as `output` | Test runtime output (VCD waveforms from `$dumpfile`, simulation logs). Iverilog simulations run with this as their working directory. |
+
+The `verifrog build` command places `libverifrog_sim.dylib/.so` and Verilator intermediates in `output`. The `test_output` directory is created automatically when tests run.
 
 ## [memories.*]
 

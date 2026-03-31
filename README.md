@@ -96,6 +96,7 @@ sources = ["src/rtl/*.v"]
 
 [test]
 output = "build"
+test_output = "test_output"  # VCD traces, logs (default: same as output)
 
 [memories.data_ram]
 path = "u_ram.mem"

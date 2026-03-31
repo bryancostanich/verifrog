@@ -44,7 +44,9 @@ let private runProcess (cmd: string) (args: string) (workDir: string) (timeoutMs
 /// extraSources: additional .v files beyond what's in TOML
 let run (projectRoot: string) (config: VerifrogConfig) (testbenchName: string) (overrides: (string * string) list) (extraSources: string list) : IverilogResult =
     let scratchDir = Path.Combine(projectRoot, config.Test.Output)
+    let testOutputDir = Path.Combine(projectRoot, config.Test.TestOutput)
     Directory.CreateDirectory(scratchDir) |> ignore
+    Directory.CreateDirectory(testOutputDir) |> ignore
 
     let iverilogCfg = config.Iverilog |> Option.defaultValue { Testbenches = []; Models = [] }
 
@@ -84,9 +86,9 @@ let run (projectRoot: string) (config: VerifrogConfig) (testbenchName: string) (
         { compileResult with Stderr = $"iverilog compilation failed:\n{compileResult.Stderr}" }
     else
 
-    // Run
+    // Run (use testOutputDir as cwd so $dumpfile VCDs land there)
     let sw = Stopwatch.StartNew()
-    let runResult = runProcess "vvp" vvpFile projectRoot 300_000
+    let runResult = runProcess "vvp" vvpFile testOutputDir 300_000
     sw.Stop()
     { runResult with ElapsedMs = sw.ElapsedMilliseconds }
 

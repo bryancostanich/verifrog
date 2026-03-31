@@ -50,6 +50,8 @@ type VerilatorConfig = {
 /// Test configuration from verifrog.toml [test]
 type TestConfig = {
     Output: string
+    /// Directory for test output files (VCD traces, logs). Defaults to test.output value.
+    TestOutput: string
 }
 
 /// Full parsed verifrog.toml
@@ -116,8 +118,11 @@ let private parseIverilog (root: TomlTable) : IverilogConfig option =
 
 let private parseTest (root: TomlTable) : TestConfig =
     match getTable root "test" with
-    | None -> { Output = "build" }
-    | Some t -> { Output = tryGetString t "output" |> Option.defaultValue "build" }
+    | None -> { Output = "build"; TestOutput = "build" }
+    | Some t ->
+        let output = tryGetString t "output" |> Option.defaultValue "build"
+        { Output = output
+          TestOutput = tryGetString t "test_output" |> Option.defaultValue output }
 
 let private parseMemories (root: TomlTable) : MemoryConfig list =
     match getTable root "memories" with

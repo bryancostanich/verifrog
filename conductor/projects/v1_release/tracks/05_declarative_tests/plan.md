@@ -46,8 +46,14 @@ Decide on the file format and nail down the syntax before writing any code.
 ## Open Questions
 
 - File extension: `.vftest`? `.verifrog`? `.test.yaml`?
+  - .verifrog
 - Should declarative tests live in the same `tests/` directory as F# tests, or a separate `tests/declarative/` directory?
+  - same tests/ directory
 - Should `verifrog init` scaffold a sample declarative test file?
+  - yes
 - How to handle hex values in the format? `0xFF` or `255` or both?
+  - parse either.
 - Should `load` support file references for large data sets? e.g., `load weight_sram from weights.hex`
+  - yes. use $readmemh format (RTL designers already know it). inline data for small sets, file ref for large.
 - Should `expect` support ranges or masks? e.g., `expect status & 0x01 == 1`
+  - v1: just `==` and `!=`. masks and bit indexing deferred to v2 if needed.

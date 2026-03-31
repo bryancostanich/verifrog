@@ -5,13 +5,15 @@ The VCD CLI (`verifrog-vcd`) is a command-line tool for analyzing VCD waveform f
 ## Usage
 
 ```bash
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Vcd.Cli -- <file.vcd> [options]
+verifrog vcd <file.vcd> [options]
+# or
+verifrog-vcd <file.vcd> [options]
 ```
 
 ### Synopsis
 
 ```
-verifrog-vcd <file.vcd> [max_time_ns] [--debug] [--signal <pattern>] [--json]
+verifrog vcd <file.vcd> [max_time_ns] [--debug] [--signal <pattern>] [--json]
 ```
 
 ### Arguments
@@ -34,7 +36,7 @@ verifrog-vcd <file.vcd> [max_time_ns] [--debug] [--signal <pattern>] [--json]
 ### Basic analysis
 
 ```bash
-dotnet run --project src/Verifrog.Vcd.Cli -- output/sim.vcd
+verifrog vcd output/sim.vcd
 ```
 
 Output:
@@ -58,7 +60,7 @@ counter.rst_n                                           1        2  0           
 ### Filter to specific signals
 
 ```bash
-dotnet run --project src/Verifrog.Vcd.Cli -- output/sim.vcd --signal "count" --signal "overflow"
+verifrog vcd output/sim.vcd --signal "count" --signal "overflow"
 ```
 
 Only tracks transitions for matching signals. The header still lists all signals, but only matching ones appear in the table.
@@ -66,7 +68,7 @@ Only tracks transitions for matching signals. The header still lists all signals
 ### Limit parse time
 
 ```bash
-dotnet run --project src/Verifrog.Vcd.Cli -- output/sim.vcd 5000
+verifrog vcd output/sim.vcd 5000
 ```
 
 Stops parsing at t=5000 ns. Useful for large dumps when you only care about the beginning.
@@ -74,7 +76,7 @@ Stops parsing at t=5000 ns. Useful for large dumps when you only care about the 
 ### Debug mode with transition timelines
 
 ```bash
-dotnet run --project src/Verifrog.Vcd.Cli -- output/sim.vcd --signal "fsm_state" --debug
+verifrog vcd output/sim.vcd --signal "fsm_state" --debug
 ```
 
 Output includes transition-by-transition detail:
@@ -96,7 +98,7 @@ TRANSITION DETAILS (debug mode)
 ### JSON output
 
 ```bash
-dotnet run --project src/Verifrog.Vcd.Cli -- output/sim.vcd --json
+verifrog vcd output/sim.vcd --json
 ```
 
 ```json
@@ -136,7 +138,7 @@ With `--debug`, each signal entry includes a `transitions` array:
 ### Combine options
 
 ```bash
-dotnet run --project src/Verifrog.Vcd.Cli -- output/sim.vcd 10000 --signal "fsm*" --signal "done" --debug --json
+verifrog vcd output/sim.vcd 10000 --signal "fsm*" --signal "done" --debug --json
 ```
 
 Parse up to t=10,000 ns, track only FSM and done signals, include transition timelines, output as JSON.

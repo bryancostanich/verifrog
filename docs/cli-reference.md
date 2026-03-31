@@ -1,13 +1,26 @@
 # CLI Reference
 
-The Verifrog CLI (`verifrog`) manages project setup, builds, and cleanup. It reads `verifrog.toml` for configuration and drives Verilator to produce the simulation shared library.
+The Verifrog CLI (`verifrog`) manages project setup, builds, cleanup, testing, debugging, and VCD analysis. It reads `verifrog.toml` for configuration and drives Verilator to produce the simulation shared library.
+
+## Installation
+
+After cloning the repo, run the install script to make `verifrog` available on your PATH:
+
+```bash
+./install.sh              # Symlinks to /usr/local/bin (default)
+./install.sh --profile    # Or add bin/ to PATH in your shell profile
+./install.sh --uninstall  # Remove symlinks
+```
 
 ## Usage
 
 ```bash
-# From any directory with VERIFROG_ROOT set:
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- <command> [args]
+verifrog <command> [args]
 ```
+
+The `verifrog` wrapper script auto-detects `VERIFROG_ROOT` from its own location and handles library paths automatically.
+
+> **Without install**: You can use the long form: `dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- <command> [args]`
 
 ## Commands
 
@@ -32,11 +45,8 @@ Creates the minimal files needed to start writing Verifrog tests in the target d
 **Example:**
 
 ```bash
-# Initialize in the current directory
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- init .
-
-# Initialize in a new directory
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- init my_project
+verifrog init .             # Initialize in the current directory
+verifrog init my_project    # Initialize in a new directory
 ```
 
 After init, edit `verifrog.toml` to point at your RTL source files and set the top module name.
@@ -66,26 +76,16 @@ Reads `verifrog.toml` from the project directory (default: current directory), c
 **Example:**
 
 ```bash
-# Build from current directory (reads ./verifrog.toml)
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- build
-
-# Build a specific project
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- build samples/counter
-
-# Build with custom Verilator flags (set in verifrog.toml)
-# [verilator]
-# flags = ["--trace", "-Wno-fatal", "--threads", "4"]
+verifrog build                  # Build from current directory
+verifrog build samples/counter  # Build a specific project
 ```
 
 **Output:**
 
 ```
-[verifrog] Reading config: verifrog.toml
-[verifrog] Top module: my_counter
-[verifrog] Sources: rtl/my_counter.v
-[verifrog] Running Verilator...
-[verifrog] Compiling shim...
-[verifrog] Built: build/libverifrog_sim.dylib
+Building verifrog.toml (top=my_counter)
+  Verilating my_counter...
+  Built: build/libverifrog_sim.dylib
 ```
 
 **Common build errors:**
@@ -108,12 +108,99 @@ Removes the build directory and all generated artifacts.
 **Example:**
 
 ```bash
-# Clean current project
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- clean
-
-# Clean a specific project
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- clean samples/counter
+verifrog clean                  # Clean current project
+verifrog clean samples/counter  # Clean a specific project
 ```
+
+### `test` — Build (if needed) and run tests
+
+```bash
+verifrog test [<project-dir>] [-- dotnet-args...]
+```
+
+Finds `verifrog.toml`, auto-builds the simulation library if it doesn't exist, sets the library path (`DYLD_LIBRARY_PATH` on macOS, `LD_LIBRARY_PATH` on Linux), and runs the test project.
+
+**Example:**
+
+```bash
+verifrog test                             # Test current project
+verifrog test samples/counter             # Test a specific project
+verifrog test -- --filter "checkpoint"    # Pass args to dotnet
+```
+
+**Output:**
+
+```
+Running tests: Tests.fsproj
+  Library: build/libverifrog_sim.dylib
+
+EXPECTO! 12 tests run in 00:00:00.08 — 12 passed, 0 failed. Success!
+```
+
+### `debug` — Interactive simulation debugger
+
+```bash
+verifrog debug [<project-dir>] [--script <path>]
+```
+
+Launches an interactive REPL where you can step the simulation, read/write signals, set checkpoints, force signals, and trace values — all from the command line. Optionally run a batch script.
+
+**Example:**
+
+```bash
+verifrog debug                         # Interactive mode
+verifrog debug samples/counter         # Debug a specific project
+verifrog debug --script probe.txt      # Run a script
+```
+
+**Interactive session:**
+
+```
+verifrog debugger -- Interactive RTL simulation debugger
+Type 'help' for commands, 'quit' to exit.
+  45 signals registered. Cycle: 0
+
+sim> write enable 1
+  enable <- 1
+sim> step 10
+sim> read count
+  count = 10
+sim> checkpoint before_overflow
+  Saved checkpoint 'before_overflow' at cycle 10
+sim> step 300
+sim> read overflow
+  overflow = 1
+sim> restore before_overflow
+  Restored checkpoint 'before_overflow' (cycle 10)
+sim> trace count,overflow 5
+  cycle  count  overflow
+  11     11     0
+  12     12     0
+  13     13     0
+  14     14     0
+  15     15     0
+sim> quit
+```
+
+See `help` in the debugger for the full command list (step, read, write, trace, watch, checkpoint, restore, force, release, run-until, signals, format, record).
+
+### `vcd` — Analyze VCD waveform files
+
+```bash
+verifrog vcd <file.vcd> [max_time_ns] [--debug] [--signal <pattern>] [--json]
+```
+
+Parse and analyze VCD waveform dumps. See the [VCD CLI Reference](vcd-cli.md) for full details.
+
+**Example:**
+
+```bash
+verifrog vcd output/sim.vcd
+verifrog vcd output/sim.vcd --signal "fsm*" --debug
+verifrog vcd output/sim.vcd --json
+```
+
+Also available as a standalone command: `verifrog-vcd`.
 
 ## Build output structure
 
@@ -131,22 +218,24 @@ build/
     ...
 ```
 
-## Running tests after build
+## Running tests
 
-The shared library must be on the library path when running tests:
+The simplest way to run tests is `verifrog test`, which handles everything automatically.
+
+If you need to run tests manually (e.g., from an IDE), set the library path:
 
 ```bash
 # macOS
-DYLD_LIBRARY_PATH=build dotnet test tests/
+DYLD_LIBRARY_PATH=build dotnet run --project tests/
 
 # Linux
-LD_LIBRARY_PATH=build dotnet test tests/
+LD_LIBRARY_PATH=build dotnet run --project tests/
 ```
 
 ## Environment
 
 | Variable | Purpose |
 |----------|---------|
-| `VERIFROG_ROOT` | Path to the Verifrog repository. Used by `.fsproj` references. |
-| `DYLD_LIBRARY_PATH` | (macOS) Directory containing `libverifrog_sim.dylib` |
-| `LD_LIBRARY_PATH` | (Linux) Directory containing `libverifrog_sim.so` |
+| `VERIFROG_ROOT` | Path to the Verifrog repository. Auto-detected by the `verifrog` script; only needed if running `dotnet` commands directly. |
+| `DYLD_LIBRARY_PATH` | (macOS) Directory containing `libverifrog_sim.dylib`. Set automatically by `verifrog test`. |
+| `LD_LIBRARY_PATH` | (Linux) Directory containing `libverifrog_sim.so`. Set automatically by `verifrog test`. |

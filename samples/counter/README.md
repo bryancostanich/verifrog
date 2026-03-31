@@ -24,17 +24,9 @@ Free-running 8-bit counter. Increments on each clock when `enable=1`. Wraps at 2
 ## Building and running
 
 ```bash
-# From the verifrog root directory
-export VERIFROG_ROOT=$PWD
-
-# Build the Verilator model
-dotnet run --project src/Verifrog.Cli -- build samples/counter
-
-# Run the tests
-DYLD_LIBRARY_PATH=samples/counter/build dotnet test tests/Verifrog.Tests
+verifrog build samples/counter
+verifrog test samples/counter
 ```
-
-On Linux, use `LD_LIBRARY_PATH` instead of `DYLD_LIBRARY_PATH`.
 
 ## What to look at
 

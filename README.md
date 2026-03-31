@@ -33,32 +33,32 @@ Verifrog's simulation model is fully controllable from code — you can pause at
 - clang++ (macOS, included with Xcode) or g++ (Linux)
 - [Icarus Verilog](http://iverilog.icarus.com/) (optional, for timing-accurate testbenches)
 
-### Try the counter sample
+### Install
 
 ```bash
 git clone https://github.com/bryancostanich/verifrog.git
 cd verifrog
-export VERIFROG_ROOT=$PWD
+./install.sh     # Symlinks verifrog to /usr/local/bin
+```
 
-# Build the Verilator model for the counter sample
-dotnet run --project src/Verifrog.Cli -- build samples/counter
+Or add `bin/` to your PATH manually: `export PATH="/path/to/verifrog/bin:$PATH"`
 
-# Run the tests
-DYLD_LIBRARY_PATH=samples/counter/build dotnet test tests/Verifrog.Tests
+### Try the counter sample
+
+```bash
+verifrog build samples/counter
+verifrog test samples/counter
 ```
 
 ### Start a new project
 
 ```bash
-export VERIFROG_ROOT=/path/to/verifrog
 cd your-project
-
-# Scaffold test infrastructure
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- init .
+verifrog init .
 
 # Edit verifrog.toml with your design, then:
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- build
-DYLD_LIBRARY_PATH=build dotnet test tests/
+verifrog build
+verifrog test
 ```
 
 See the full [Getting Started Guide](docs/getting-started.md) for a step-by-step walkthrough.

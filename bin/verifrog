@@ -1,0 +1,207 @@
+#!/usr/bin/env bash
+#
+# verifrog — wrapper script for the Verifrog Verilog testing framework.
+#
+# Replaces verbose "dotnet run --project ..." incantations with simple commands:
+#   verifrog init [dir]
+#   verifrog build [dir]
+#   verifrog clean [dir]
+#   verifrog test [dir] [-- dotnet-test-args...]
+#   verifrog debug [dir] [--script <path>]
+#   verifrog vcd <file.vcd> [options]
+#
+# VERIFROG_ROOT is auto-detected from this script's location.
+# Override by setting VERIFROG_ROOT in your environment.
+
+set -euo pipefail
+
+# ---- Auto-detect VERIFROG_ROOT ----
+
+if [[ -z "${VERIFROG_ROOT:-}" ]]; then
+    # Resolve symlinks to find the real script location
+    SOURCE="${BASH_SOURCE[0]}"
+    while [[ -L "$SOURCE" ]]; do
+        DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+        SOURCE="$(readlink "$SOURCE")"
+        [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+    done
+    SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    export VERIFROG_ROOT="$(dirname "$SCRIPT_DIR")"
+fi
+
+CLI_PROJECT="$VERIFROG_ROOT/src/Verifrog.Cli/Verifrog.Cli.fsproj"
+VCD_PROJECT="$VERIFROG_ROOT/src/Verifrog.Vcd.Cli/Verifrog.Vcd.Cli.fsproj"
+
+# ---- Helpers ----
+
+die() { echo "Error: $*" >&2; exit 1; }
+
+# Find verifrog.toml by walking up from a directory
+find_toml() {
+    local dir="$1"
+    dir="$(cd "$dir" && pwd)"
+    while [[ "$dir" != "/" ]]; do
+        [[ -f "$dir/verifrog.toml" ]] && echo "$dir/verifrog.toml" && return 0
+        dir="$(dirname "$dir")"
+    done
+    return 1
+}
+
+# Read the [test].output value from verifrog.toml (default: "build")
+read_build_dir() {
+    local toml="$1"
+    # Simple grep — works for output = "build" style lines
+    local val
+    val=$(grep -E '^\s*output\s*=' "$toml" | head -1 | sed 's/.*= *"\([^"]*\)".*/\1/')
+    echo "${val:-build}"
+}
+
+# Detect OS and set library path variable name
+lib_path_var() {
+    case "$(uname -s)" in
+        Darwin) echo "DYLD_LIBRARY_PATH" ;;
+        *)      echo "LD_LIBRARY_PATH" ;;
+    esac
+}
+
+usage() {
+    cat <<'USAGE'
+verifrog — Verilog testing framework
+
+Commands:
+  init [dir]                    Scaffold a new verifrog project
+  build [dir]                   Build Verilator model from verifrog.toml
+  clean [dir]                   Remove build artifacts
+  test [dir] [-- args...]       Build (if needed) and run tests
+  debug [dir] [--script <f>]    Interactive simulation debugger
+  vcd <file.vcd> [options]      Analyze VCD waveform files
+
+Options:
+  -h, --help                    Show this help
+
+Examples:
+  verifrog init my_project
+  verifrog build
+  verifrog test
+  verifrog test samples/counter
+  verifrog test -- --filter "counter"
+  verifrog debug
+  verifrog debug --script probe.txt
+  verifrog vcd output/sim.vcd --signal "fsm*" --debug
+USAGE
+}
+
+# ---- Commands ----
+
+cmd_init() {
+    local dir="${1:-.}"
+    dotnet run --project "$CLI_PROJECT" -- init "$dir"
+}
+
+cmd_build() {
+    local dir="${1:-.}"
+    dotnet run --project "$CLI_PROJECT" -- build "$dir"
+}
+
+cmd_clean() {
+    local dir="${1:-.}"
+    dotnet run --project "$CLI_PROJECT" -- clean "$dir"
+}
+
+cmd_test() {
+    local dir="."
+    local dotnet_args=()
+
+    # Parse args: everything before "--" is our dir, everything after goes to dotnet test
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --)
+                shift
+                dotnet_args=("$@")
+                break
+                ;;
+            *)
+                dir="$1"
+                shift
+                ;;
+        esac
+    done
+
+    # Find verifrog.toml
+    local toml
+    toml=$(find_toml "$dir") || die "verifrog.toml not found (searched up from $dir). Run 'verifrog init' first."
+
+    local project_root
+    project_root="$(dirname "$toml")"
+
+    local build_dir
+    build_dir="$project_root/$(read_build_dir "$toml")"
+
+    local lib_ext
+    case "$(uname -s)" in
+        Darwin) lib_ext="dylib" ;;
+        *)      lib_ext="so" ;;
+    esac
+
+    local lib_path="$build_dir/libverifrog_sim.$lib_ext"
+
+    # Auto-build if library doesn't exist
+    if [[ ! -f "$lib_path" ]]; then
+        echo "Library not found at $lib_path — building..."
+        cmd_build "$dir"
+    fi
+
+    # Find test project
+    local test_proj=""
+    if [[ -d "$project_root/tests" ]]; then
+        # Look for .fsproj in tests/
+        test_proj=$(find "$project_root/tests" -maxdepth 2 -name "*.fsproj" | head -1)
+    fi
+
+    if [[ -z "$test_proj" ]]; then
+        # Fall back to framework's own tests
+        test_proj="$VERIFROG_ROOT/tests/Verifrog.Tests/Verifrog.Tests.fsproj"
+    fi
+
+    if [[ ! -f "$test_proj" ]]; then
+        die "No test project found. Expected .fsproj in $project_root/tests/"
+    fi
+
+    local test_dir
+    test_dir="$(dirname "$test_proj")"
+
+    # Set library path and run
+    local path_var
+    path_var=$(lib_path_var)
+
+    echo "Running tests: $(basename "$test_proj")"
+    echo "  Library: $lib_path"
+    echo ""
+
+    export "$path_var"="$build_dir${!path_var:+:${!path_var}}"
+    dotnet run --project "$test_proj" "${dotnet_args[@]+"${dotnet_args[@]}"}"
+}
+
+cmd_debug() {
+    dotnet run --project "$CLI_PROJECT" -- debug "$@"
+}
+
+cmd_vcd() {
+    [[ $# -eq 0 ]] && die "Usage: verifrog vcd <file.vcd> [options]"
+    dotnet run --project "$VCD_PROJECT" -- "$@"
+}
+
+# ---- Dispatch ----
+
+[[ $# -eq 0 ]] && { usage; exit 0; }
+
+case "$1" in
+    init)   shift; cmd_init "$@" ;;
+    build)  shift; cmd_build "$@" ;;
+    clean)  shift; cmd_clean "$@" ;;
+    test)   shift; cmd_test "$@" ;;
+    debug)  shift; cmd_debug "$@" ;;
+    vcd)    shift; cmd_vcd "$@" ;;
+    -h|--help|help) usage ;;
+    *)      die "Unknown command: $1. Run 'verifrog --help' for usage." ;;
+esac

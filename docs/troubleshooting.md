@@ -267,6 +267,6 @@ sudo ldconfig
 You built the library on x86_64 but are running on ARM (or vice versa). Rebuild:
 
 ```bash
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- clean
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- build
+verifrog clean
+verifrog build
 ```

@@ -30,13 +30,8 @@ apt install iverilog           # Linux
 ## Building and running
 
 ```bash
-export VERIFROG_ROOT=$PWD
-
-# Build the Verilator model
-dotnet run --project src/Verifrog.Cli -- build samples/iverilog_tb
-
-# Run all tests (both backends)
-DYLD_LIBRARY_PATH=samples/iverilog_tb/build dotnet test tests/Verifrog.Tests
+verifrog build samples/iverilog_tb
+verifrog test samples/iverilog_tb
 ```
 
 ## Configuration

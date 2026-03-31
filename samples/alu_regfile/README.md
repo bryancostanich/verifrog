@@ -23,13 +23,8 @@ alu_regfile
 ## Building and running
 
 ```bash
-export VERIFROG_ROOT=$PWD
-
-# Build
-dotnet run --project src/Verifrog.Cli -- build samples/alu_regfile
-
-# Run tests
-DYLD_LIBRARY_PATH=samples/alu_regfile/build dotnet test tests/Verifrog.Tests
+verifrog build samples/alu_regfile
+verifrog test samples/alu_regfile
 ```
 
 ## Configuration

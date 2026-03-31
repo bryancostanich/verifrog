@@ -1,6 +1,10 @@
 # .NET build artifacts
-bin/
+**/bin/Debug/
+**/bin/Release/
 obj/
+
+# Keep verifrog scripts
+!bin/
 
 # Verilator build artifacts
 samples/*/build/

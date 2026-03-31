@@ -20,13 +20,8 @@ apt install iverilog           # Linux
 ## Building and running
 
 ```bash
-export VERIFROG_ROOT=$PWD
-
-# Build Verilator model
-dotnet run --project src/Verifrog.Cli -- build samples/i2c_bfm
-
-# Run all tests
-DYLD_LIBRARY_PATH=samples/i2c_bfm/build dotnet test tests/Verifrog.Tests
+verifrog build samples/i2c_bfm
+verifrog test samples/i2c_bfm
 ```
 
 You can also run the iverilog testbench standalone:

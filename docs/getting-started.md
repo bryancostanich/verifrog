@@ -20,47 +20,49 @@ dotnet --version    # 8.0.x or higher
 verilator --version # Verilator 5.x or higher
 ```
 
-## Step 1: Clone Verifrog
+## Step 1: Clone and install
 
 ```bash
 git clone https://github.com/bryancostanich/verifrog.git
 cd verifrog
-export VERIFROG_ROOT=$PWD
+./install.sh
 ```
+
+This symlinks the `verifrog` and `verifrog-vcd` commands to `/usr/local/bin`. Alternatively, add `bin/` to your PATH: `export PATH="/path/to/verifrog/bin:$PATH"`.
+
+> **Without install.sh**: You can skip the install and use the long form instead:
+> `dotnet run --project /path/to/verifrog/src/Verifrog.Cli -- <command>`.
+> The scripts just wrap this and handle library paths automatically.
 
 ## Step 2: Try the counter sample
 
 Before setting up your own project, make sure everything works with the included counter sample.
 
-### Build the simulation library
+### Build and test
 
 ```bash
-dotnet run --project src/Verifrog.Cli -- build samples/counter
+verifrog build samples/counter
+verifrog test samples/counter
 ```
 
-This runs Verilator on the counter RTL, compiles the generic C++ shim, and links everything into a shared library. You should see output like:
+The `build` command runs Verilator on the counter RTL, compiles the generic C++ shim, and links everything into a shared library. You should see output like:
 
 ```
-[verifrog] Reading config: samples/counter/verifrog.toml
-[verifrog] Top module: counter
-[verifrog] Running Verilator...
-[verifrog] Compiling shim...
-[verifrog] Built: samples/counter/build/libverifrog_sim.dylib
+Building samples/counter/verifrog.toml (top=counter)
+  Verilating counter...
+  Built: samples/counter/build/libverifrog_sim.dylib
 ```
 
-### Run the tests
-
-```bash
-DYLD_LIBRARY_PATH=samples/counter/build dotnet test tests/Verifrog.Tests
-```
-
-On Linux, use `LD_LIBRARY_PATH` instead of `DYLD_LIBRARY_PATH`.
-
-You should see passing tests:
+The `test` command automatically sets the library path and runs the tests:
 
 ```
-Passed!  - Failed:  0, Passed:  X, Skipped:  0
+Running tests: Verifrog.Tests.fsproj
+  Library: samples/counter/build/libverifrog_sim.dylib
+
+EXPECTO! 30 tests run in 00:00:00.15 — 30 passed, 0 failed. Success!
 ```
+
+> **Note**: `verifrog test` will auto-build if the library doesn't exist yet, so you can often just run `verifrog test` directly.
 
 ## Step 3: Initialize your own project
 
@@ -68,7 +70,7 @@ Now set up Verifrog for your own Verilog design.
 
 ```bash
 cd /path/to/your-project
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- init .
+verifrog init .
 ```
 
 This creates:
@@ -102,7 +104,7 @@ The `top` field must exactly match your Verilog `module` declaration. The `sourc
 ## Step 5: Build the simulation library
 
 ```bash
-dotnet run --project $VERIFROG_ROOT/src/Verifrog.Cli -- build
+verifrog build
 ```
 
 This:
@@ -176,9 +178,12 @@ Make sure `tests/Tests.fsproj` references Verifrog:
 ## Step 7: Run your tests
 
 ```bash
-DYLD_LIBRARY_PATH=build dotnet test tests/    # macOS
-LD_LIBRARY_PATH=build dotnet test tests/       # Linux
+verifrog test
 ```
+
+This auto-detects your `verifrog.toml`, sets the library path, and runs the tests. If the library hasn't been built yet, it builds automatically.
+
+> **Without the script**: `DYLD_LIBRARY_PATH=build dotnet run --project tests/` (macOS) or `LD_LIBRARY_PATH=build dotnet run --project tests/` (Linux).
 
 ## Adding memory access
 

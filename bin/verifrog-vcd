@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+#
+# verifrog-vcd — Analyze VCD waveform files.
+#
+# Wrapper around the Verifrog.Vcd.Cli tool.
+#
+# Usage:
+#   verifrog-vcd <file.vcd> [max_time_ns] [--debug] [--signal <pattern>] [--json]
+#
+# Examples:
+#   verifrog-vcd output/sim.vcd
+#   verifrog-vcd output/sim.vcd --signal "fsm*" --debug
+#   verifrog-vcd output/sim.vcd 5000 --json
+
+set -euo pipefail
+
+# Auto-detect VERIFROG_ROOT
+if [[ -z "${VERIFROG_ROOT:-}" ]]; then
+    SOURCE="${BASH_SOURCE[0]}"
+    while [[ -L "$SOURCE" ]]; do
+        DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+        SOURCE="$(readlink "$SOURCE")"
+        [[ "$SOURCE" != /* ]] && SOURCE="$DIR/$SOURCE"
+    done
+    SCRIPT_DIR="$(cd -P "$(dirname "$SOURCE")" && pwd)"
+    export VERIFROG_ROOT="$(dirname "$SCRIPT_DIR")"
+fi
+
+VCD_PROJECT="$VERIFROG_ROOT/src/Verifrog.Vcd.Cli/Verifrog.Vcd.Cli.fsproj"
+
+if [[ $# -eq 0 ]]; then
+    echo "Usage: verifrog-vcd <file.vcd> [max_time_ns] [--debug] [--signal <pattern>] [--json]"
+    echo ""
+    echo "Options:"
+    echo "  max_time_ns        Stop parsing after this time (nanoseconds)"
+    echo "  --debug, --verbose Show full transition timelines"
+    echo "  --signal <pattern> Only track matching signals (repeatable)"
+    echo "  --json             Output as JSON"
+    echo ""
+    echo "Examples:"
+    echo "  verifrog-vcd sim.vcd"
+    echo "  verifrog-vcd sim.vcd --signal \"count\" --signal \"overflow\" --debug"
+    echo "  verifrog-vcd sim.vcd 5000 --json"
+    exit 0
+fi
+
+dotnet run --project "$VCD_PROJECT" -- "$@"

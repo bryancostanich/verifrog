@@ -21,13 +21,8 @@ sram #(.DEPTH(256), .WIDTH(8))
 ## Building and running
 
 ```bash
-export VERIFROG_ROOT=$PWD
-
-# Build
-dotnet run --project src/Verifrog.Cli -- build samples/sram
-
-# Run tests
-DYLD_LIBRARY_PATH=samples/sram/build dotnet test tests/Verifrog.Tests
+verifrog build samples/sram
+verifrog test samples/sram
 ```
 
 ## Configuration

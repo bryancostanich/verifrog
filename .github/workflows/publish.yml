@@ -1,0 +1,53 @@
+# Publish NuGet packages on release tag
+#
+# Triggered by pushing a version tag (e.g., v1.0.0).
+# Packs all three libraries and pushes to nuget.org.
+#
+# Requires NUGET_API_KEY secret in repo settings.
+
+name: Publish NuGet
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install .NET SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          echo "version=$TAG" >> $GITHUB_OUTPUT
+          echo "Publishing version: $TAG"
+
+      - name: Pack Verifrog.Vcd
+        run: dotnet pack src/Verifrog.Vcd/Verifrog.Vcd.fsproj -c Release -o out /p:Version=${{ steps.version.outputs.version }}
+
+      - name: Pack Verifrog.Sim
+        run: dotnet pack src/Verifrog.Sim/Verifrog.Sim.fsproj -c Release -o out /p:Version=${{ steps.version.outputs.version }}
+
+      - name: Pack Verifrog.Runner
+        run: dotnet pack src/Verifrog.Runner/Verifrog.Runner.fsproj -c Release -o out /p:Version=${{ steps.version.outputs.version }}
+
+      - name: List packages
+        run: ls -lh out/
+
+      - name: Push to NuGet
+        run: dotnet nuget push "out/*.nupkg" --api-key ${{ secrets.NUGET_API_KEY }} --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: out/*.nupkg
+          generate_release_notes: true

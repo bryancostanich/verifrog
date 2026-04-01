@@ -20,6 +20,7 @@
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <mutex>
 #include <cstdio>
 #include <unistd.h>
 #include <fcntl.h>
@@ -40,6 +41,11 @@ void vl_stop(const char* filename, int linenum, const char* hier) {
         g_stop_warned = true;
     }
 }
+
+// Global mutex — protects all sim operations since Verilator's global state
+// (scope tables, VPI) and stdout redirection are not thread-safe.
+// Tests running in parallel must serialize through this mutex.
+static std::recursive_mutex g_sim_mutex;
 
 // Display suppression globals
 static bool g_suppress_display = true;
@@ -87,6 +93,7 @@ static void suppress_init() {
 
 static inline void eval_model(SimContext* ctx) {
     if (g_suppress_display) {
+        std::lock_guard<std::recursive_mutex> lock(g_sim_mutex);
         suppress_init();
         fflush(stdout);
         dup2(g_devnull_fd, STDOUT_FILENO);
@@ -238,6 +245,7 @@ static void apply_forces(SimContext* ctx) {
 extern "C" {
 
 SimContext* sim_create() {
+    std::lock_guard<std::recursive_mutex> lock(g_sim_mutex);
     auto* ctx = new SimContext();
     ctx->vctx = new VerilatedContext();
     ctx->vctx->commandArgs(0, (const char**)nullptr);
@@ -254,6 +262,7 @@ SimContext* sim_create() {
 }
 
 void sim_destroy(SimContext* ctx) {
+    std::lock_guard<std::recursive_mutex> lock(g_sim_mutex);
     if (!ctx) return;
     delete ctx->model;
     delete ctx->vctx;
@@ -261,6 +270,7 @@ void sim_destroy(SimContext* ctx) {
 }
 
 void sim_reset(SimContext* ctx, int cycles) {
+    std::lock_guard<std::recursive_mutex> lock(g_sim_mutex);
     if (!ctx) return;
 
     auto clk_it = ctx->signals.find("clk");

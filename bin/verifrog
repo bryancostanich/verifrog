@@ -221,9 +221,10 @@ cmd_test() {
     fi
     echo ""
 
-    # Run tests
+    # Run tests. Use --sequenced to avoid parallel sim creation which can crash
+    # the test host (Verilator's global state is not thread-safe across instances).
     local exit_code=0
-    dotnet run --project "$test_proj" -- "${extra_args[@]+"${extra_args[@]}"}" "${dotnet_args[@]+"${dotnet_args[@]}"}" || exit_code=$?
+    dotnet run --project "$test_proj" -- --sequenced "${extra_args[@]+"${extra_args[@]}"}" "${dotnet_args[@]+"${dotnet_args[@]}"}" || exit_code=$?
 
     # Generate markdown report
     if [[ "$report" == true && -f "$junit_xml" ]]; then

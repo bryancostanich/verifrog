@@ -440,3 +440,66 @@ let loadTestsWithConfig (dir: string) (config: Config.VerifrogConfig) : Test lis
             sim.Reset()
             sim)
         validation :: groupByCategory allTests (toExpectoTestWithConfig config)
+
+// ---- Auto-discovery ----
+
+/// Scan for .verifrog files by walking up from a starting directory
+/// until we find some, or hit the filesystem root.
+let private discoverVerifrogFiles (startDir: string) : string list =
+    let rec search (dir: string) =
+        if dir = null then []
+        else
+            let files =
+                try Directory.GetFiles(dir, "*.verifrog", SearchOption.AllDirectories) |> Array.toList
+                with _ -> []
+            if not files.IsEmpty then files
+            else
+                let parent = Path.GetDirectoryName(dir)
+                if parent = null || parent = dir then []
+                else search parent
+    search startDir
+
+/// Auto-discover and load .verifrog tests starting from a source directory.
+/// Searches the directory and all subdirectories for .verifrog files.
+///
+/// Usage in your test project's Main.fs (one line):
+///   [<Tests>]
+///   let declarativeTests = Declarative.discover __SOURCE_DIRECTORY__
+let discover (sourceDir: string) : Test =
+    let files = discoverVerifrogFiles sourceDir
+    if files.IsEmpty then
+        testList "Declarative" [
+            testCase "no .verifrog files found" (fun () ->
+                skiptest "No .verifrog files found")
+        ]
+    else
+        let allTests = files |> List.collect parse
+        let testCases = groupByCategory allTests toExpectoTest
+        let validation = validationTest allTests (fun () ->
+            Sim.SuppressDisplay(true)
+            let sim = Sim.Create()
+            sim.Reset()
+            sim)
+        testList "Declarative" (validation :: testCases)
+
+/// Auto-discover .verifrog tests with TOML config for memory/register access.
+///
+/// Usage:
+///   [<Tests>]
+///   let declarativeTests = Declarative.discoverWithConfig __SOURCE_DIRECTORY__ config
+let discoverWithConfig (sourceDir: string) (config: Config.VerifrogConfig) : Test =
+    let files = discoverVerifrogFiles sourceDir
+    if files.IsEmpty then
+        testList "Declarative" [
+            testCase "no .verifrog files found" (fun () ->
+                skiptest "No .verifrog files found")
+        ]
+    else
+        let allTests = files |> List.collect parse
+        let testCases = groupByCategory allTests (toExpectoTestWithConfig config)
+        let validation = validationTest allTests (fun () ->
+            Sim.SuppressDisplay(true)
+            let sim = Sim.Create(config)
+            sim.Reset()
+            sim)
+        testList "Declarative" (validation :: testCases)

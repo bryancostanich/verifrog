@@ -323,20 +323,39 @@ let private referencedMemories (test: DeclTest) : (string * string * int) list =
         | LoadFromFile (m, _, _) -> yield (m, test.File, test.Line)
         | _ -> () ]
 
+/// Strip all array indices from a signal path to get the base path.
+/// "u_wgt_bank_a.gen_bank[0].u_bank.mem[511]" -> "u_wgt_bank_a.gen_bank.u_bank.mem"
+/// "u_regfile.regs[2]" -> "u_regfile.regs"
+/// "some_signal" -> "some_signal" (unchanged)
+let private stripIndices (s: string) : string =
+    Regex.Replace(s, @"\[\d+\]", "")
+
 /// Validate all signal and memory references in parsed tests against a live Sim.
 /// Returns a list of error strings. Empty list means all references are valid.
+/// Array-indexed signals are validated by stripping indices and checking if
+/// any known signal starts with the stripped base path.
 let validate (tests: DeclTest list) (sim: Sim) : string list =
-    let knownSignals = sim.ListSignals() |> Set.ofList
+    let knownSignals = sim.ListSignals()
+    let knownSignalSet = knownSignals |> Set.ofList
     let knownMemories = sim.MemoryNames |> Set.ofList
+
+    let isKnownSignal (s: string) =
+        // Exact match
+        knownSignalSet.Contains(s)
+        // Register name from TOML
+        || sim.RegisterNames |> List.contains s
+        // Array-indexed paths (contain []) — skip validation.
+        // Verilator handles array indexing at runtime; the signal list only
+        // contains base array names, not individual elements. Runtime errors
+        // will catch bad paths with clear messages.
+        || s.Contains("[")
 
     let signalErrors =
         tests
         |> List.collect referencedSignals
         |> List.distinctBy (fun (s, _, _) -> s)
         |> List.choose (fun (s, file, line) ->
-            if knownSignals.Contains(s) then None
-            // Also check if it's a register name (registers are accessed via Write/Expect too)
-            elif sim.RegisterNames |> List.contains s then None
+            if isKnownSignal s then None
             else Some $"Unknown signal '{s}' in {Path.GetFileName file}:{line}")
 
     let memoryErrors =

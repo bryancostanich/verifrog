@@ -67,6 +67,24 @@ See the full [Getting Started Guide](docs/getting-started.md) for a step-by-step
 
 ### Writing a test
 
+Most hardware tests are just "set signals, step, check." Write those declaratively in a `.verifrog` file — no F# needed:
+
+```
+test "counts to 10 when enabled" [Smoke]:
+  write enable = 1
+  step 10
+  expect count == 10
+
+test "load then count" [Unit]:
+  write load_value = 42, load_en = 1
+  step 1
+  write load_en = 0, enable = 1
+  step 5
+  expect count == 47
+```
+
+Or in F# when you need more control:
+
 ```fsharp
 open Verifrog.Sim
 open Verifrog.Runner
@@ -80,6 +98,8 @@ let tests = testList "counter" [
     }
 ]
 ```
+
+Both run in the same test suite — same categories, same `--report`, same `verifrog test`.
 
 ### Debugging with checkpoints and Fork
 
@@ -178,28 +198,6 @@ let tests = testList "MySoC" [
 ```
 
 Also available: `stress` (long-running), `golden` (reference outputs), `regression` (bug-fix coverage).
-
-## Declarative tests
-
-Most hardware tests are just "set signals, step, check." Write those without F# using `.verifrog` files:
-
-```
-test "counter reaches 10" [Smoke]:
-  write enable = 1
-  step 10
-  expect count == 10
-
-test "load then count" [Unit]:
-  write load_value = 42, load_en = 1
-  step 1
-  write load_en = 0, enable = 1
-  step 5
-  expect count == 47
-```
-
-Declarative tests coexist with F# tests in the same runner — same categories, same `--report`, same `verifrog test`. Use `.verifrog` files for the simple stuff, F# for complex workflows (fork, golden models, error recovery).
-
-See the [Declarative Tests Guide](docs/declarative-tests.md) for the full format reference.
 
 ## Architecture
 

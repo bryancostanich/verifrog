@@ -120,6 +120,49 @@ let discover (projectRoot: string) (config: VerifrogConfig) : string list =
                    |> Array.map Path.GetFileNameWithoutExtension
                    |> Array.sort ]
 
+// ---- TOML-based convenience functions ----
+// These read config from verifrog.toml and derive projectRoot automatically,
+// eliminating the need for design-specific wrapper files.
+
+/// Cached config holder to avoid re-parsing on every call
+let mutable private cachedConfig: (string * string * VerifrogConfig) option = None
+
+let private getConfig (tomlPath: string) =
+    let fullPath = Path.GetFullPath(tomlPath)
+    match cachedConfig with
+    | Some (path, root, cfg) when path = fullPath -> (root, cfg)
+    | _ ->
+        let cfg = Verifrog.Sim.Config.parse fullPath
+        let root = Path.GetDirectoryName(fullPath)
+        cachedConfig <- Some (fullPath, root, cfg)
+        (root, cfg)
+
+/// Run a testbench using verifrog.toml for config and project root.
+///
+/// Usage:
+///   let result = Iverilog.runFromToml "verifrog.toml" "dpc_roundtrip_tb" [] []
+let runFromToml (tomlPath: string) (testbenchName: string) (overrides: (string * string) list) (extraSources: string list) : IverilogResult =
+    let (root, cfg) = getConfig tomlPath
+    run root cfg testbenchName overrides extraSources
+
+/// Run a testbench with no overrides, using verifrog.toml.
+///
+/// Usage:
+///   let result = Iverilog.runSimpleFromToml "verifrog.toml" "shift_reg_tb"
+let runSimpleFromToml (tomlPath: string) (testbenchName: string) : IverilogResult =
+    let (root, cfg) = getConfig tomlPath
+    runSimple root cfg testbenchName
+
+/// Auto-detect BFM dependencies, using verifrog.toml.
+let runAutoFromToml (tomlPath: string) (testbenchName: string) : IverilogResult =
+    let (root, cfg) = getConfig tomlPath
+    runAuto root cfg testbenchName
+
+/// Discover all testbenches matching TOML patterns, using verifrog.toml.
+let discoverFromToml (tomlPath: string) : string list =
+    let (root, cfg) = getConfig tomlPath
+    discover root cfg
+
 /// Check if stdout indicates all tests passed
 let passed (result: IverilogResult) : bool =
     result.ExitCode = 0 &&

@@ -52,6 +52,9 @@ type TestConfig = {
     Output: string
     /// Directory for test output files (VCD traces, logs). Defaults to test.output value.
     TestOutput: string
+    /// Directory containing test files (.verifrog declarative tests, .fs F# tests).
+    /// Defaults to "tests".
+    Tests: string
 }
 
 /// Full parsed verifrog.toml
@@ -118,11 +121,12 @@ let private parseIverilog (root: TomlTable) : IverilogConfig option =
 
 let private parseTest (root: TomlTable) : TestConfig =
     match getTable root "test" with
-    | None -> { Output = "build"; TestOutput = "build" }
+    | None -> { Output = "build"; TestOutput = "build"; Tests = "tests" }
     | Some t ->
         let output = tryGetString t "output" |> Option.defaultValue "build"
         { Output = output
-          TestOutput = tryGetString t "test_output" |> Option.defaultValue output }
+          TestOutput = tryGetString t "test_output" |> Option.defaultValue output
+          Tests = tryGetString t "tests" |> Option.defaultValue "tests" }
 
 let private parseMemories (root: TomlTable) : MemoryConfig list =
     match getTable root "memories" with
@@ -182,7 +186,8 @@ let parse (tomlPath: string) : VerifrogConfig =
             Testbenches = iv.Testbenches |> List.map (resolvePath baseDir)
             Models = iv.Models |> List.map (resolvePath baseDir) })
       Test = { Output = resolvePath baseDir test.Output
-               TestOutput = resolvePath baseDir test.TestOutput }
+               TestOutput = resolvePath baseDir test.TestOutput
+               Tests = resolvePath baseDir test.Tests }
       Memories = parseMemories root
       Registers = parseRegisters root }
 

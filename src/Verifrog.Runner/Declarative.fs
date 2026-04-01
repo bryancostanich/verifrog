@@ -503,3 +503,14 @@ let discoverWithConfig (sourceDir: string) (config: Config.VerifrogConfig) : Tes
             sim.Reset()
             sim)
         testList "Declarative" (validation :: testCases)
+
+/// Discover .verifrog tests using verifrog.toml for both the test directory
+/// and memory/register config. Reads [test].tests for the directory path.
+///
+/// Usage (one line in your test project):
+///   [<Tests>]
+///   let declarativeTests = Declarative.discoverFromToml "verifrog.toml"
+let discoverFromToml (tomlPath: string) : Test =
+    let config = Config.parse tomlPath
+    let testsDir = config.Test.Tests
+    discoverWithConfig testsDir config

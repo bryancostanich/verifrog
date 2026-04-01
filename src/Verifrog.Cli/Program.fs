@@ -60,6 +60,7 @@ let private tomlTemplate = String.concat "\n" [
     ""
     "[test]"
     "output = \"build\""
+    "tests = \"tests\""
     ""
     "# [memories.data_ram]"
     "# path = \"u_ram.mem\""
@@ -84,6 +85,7 @@ let private fsprojTemplate = String.concat "\n" [
     "  </PropertyGroup>"
     "  <ItemGroup>"
     "    <Compile Include=\"Tests.fs\" />"
+    "    <Compile Include=\"DeclarativeLoader.fs\" />"
     "    <Compile Include=\"Program.fs\" />"
     "  </ItemGroup>"
     "  <ItemGroup>"
@@ -104,6 +106,16 @@ let private testsTemplate = String.concat "\n" [
     "        Expect.equal 1 1 \"placeholder passes\""
     "    }"
     "]"
+]
+
+let private declarativeLoaderTemplate = String.concat "\n" [
+    "module DeclarativeTests"
+    ""
+    "open Expecto"
+    "open Verifrog.Runner.Declarative"
+    ""
+    "[<Tests>]"
+    "let declarativeTests = discoverFromToml (System.IO.Path.Combine(__SOURCE_DIRECTORY__, \"..\", \"verifrog.toml\"))"
 ]
 
 let private programTemplate = String.concat "\n" [
@@ -129,6 +141,7 @@ let private doInit (targetDir: string) =
     File.WriteAllText(tomlPath, tomlTemplate)
     File.WriteAllText(Path.Combine(testDir, "Tests.fsproj"), fsprojTemplate)
     File.WriteAllText(Path.Combine(testDir, "Tests.fs"), testsTemplate)
+    File.WriteAllText(Path.Combine(testDir, "DeclarativeLoader.fs"), declarativeLoaderTemplate)
     File.WriteAllText(Path.Combine(testDir, "Program.fs"), programTemplate)
     printfn "Created verifrog project in %s" dir
     printfn "  verifrog.toml  — edit design config"

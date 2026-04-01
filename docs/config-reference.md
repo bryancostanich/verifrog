@@ -45,6 +45,7 @@ test_output = "test_output"   # Directory for test output: VCD traces, logs (def
 |-----|---------|-------------|
 | `output` | `"build"` | Build artifacts (`.vvp`, Verilator intermediates, `libverifrog_sim`) |
 | `test_output` | same as `output` | Test runtime output (VCD waveforms from `$dumpfile`, simulation logs). Iverilog simulations run with this as their working directory. |
+| `tests` | `"tests"` | Directory containing test files (`.verifrog` declarative tests). Used by `Declarative.discoverFromToml`. |
 
 The `verifrog build` command places `libverifrog_sim.dylib/.so` and Verilator intermediates in `output`. The `test_output` directory is created automatically when tests run.
 

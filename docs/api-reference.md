@@ -332,6 +332,32 @@ verifrog test --category Unit            # Run only unit tests
 verifrog test                            # Run all categories
 ```
 
+### Declarative
+
+Auto-discover and run `.verifrog` declarative test files.
+
+| Function | Description |
+|---|---|
+| `Declarative.discoverFromToml tomlPath` | Read `[test].tests` from TOML, discover and load `.verifrog` files |
+| `Declarative.discover sourceDir` | Discover from a source directory |
+| `Declarative.discoverWithConfig sourceDir config` | Discover with TOML config for memory/register access |
+| `Declarative.loadTests dir` | Load from a specific directory |
+| `Declarative.loadTestsWithConfig dir config` | Load with config |
+| `Declarative.parse filePath` | Parse a single `.verifrog` file into AST |
+| `Declarative.validate tests sim` | Check all signal/memory references against live sim |
+
+```fsharp
+// Recommended: one-liner using verifrog.toml
+[<Tests>]
+let declarativeTests = Declarative.discoverFromToml "verifrog.toml"
+
+// Or from a specific directory
+[<Tests>]
+let declarativeTests = Declarative.discover __SOURCE_DIRECTORY__
+```
+
+See the [Declarative Tests Guide](declarative-tests.md) for the full format reference.
+
 ### SimFixture
 
 Convenience functions for common test setup patterns.
@@ -400,6 +426,8 @@ Expect.iverilogPassed result "testbench should pass"
 
 Compile and run Verilog testbenches through Icarus Verilog.
 
+#### With explicit config
+
 | Function | Description |
 |---|---|
 | `Iverilog.run root config tbName overrides extras` | Full control: compile and run |
@@ -409,26 +437,31 @@ Compile and run Verilog testbenches through Icarus Verilog.
 | `Iverilog.passed result` | Check stdout for PASS |
 | `Iverilog.parseSummary stdout` | Parse `(passed, failed)` counts |
 
+#### From TOML (recommended)
+
+These read config from `verifrog.toml` and derive the project root automatically. No wrapper file needed.
+
+| Function | Description |
+|---|---|
+| `Iverilog.runFromToml tomlPath tbName overrides extras` | Full control |
+| `Iverilog.runSimpleFromToml tomlPath tbName` | Run with no overrides |
+| `Iverilog.runAutoFromToml tomlPath tbName` | Auto-detect BFM dependencies |
+| `Iverilog.discoverFromToml tomlPath` | Find testbenches |
+
 ```fsharp
-let config = Config.parse "verifrog.toml"
-let root = "."
-
-// Discover available testbenches
-let tbs = Iverilog.discover root config
-// ["shift_reg_tb"; "fifo_tb"]
-
-// Run a testbench
-let result = Iverilog.runSimple root config "shift_reg_tb"
-printfn "Exit: %d, Time: %d ms" result.ExitCode result.ElapsedMs
+// From TOML — no config/root boilerplate
+let result = Iverilog.runSimpleFromToml "verifrog.toml" "shift_reg_tb"
 printfn "Passed: %b" (Iverilog.passed result)
 
-// Run with parameter overrides
-let result = Iverilog.run root config "fifo_tb" [("-P", "tb.DEPTH=32")] []
+// With parameter overrides
+let result = Iverilog.runFromToml "verifrog.toml" "fifo_tb" [("-P", "tb.DEPTH=32")] []
 
-// Parse summary from stdout
-match Iverilog.parseSummary result.Stdout with
-| Some (passed, failed) -> printfn "%d passed, %d failed" passed failed
-| None -> printfn "No summary found in output"
+// Discover testbenches
+let tbs = Iverilog.discoverFromToml "verifrog.toml"
+
+// Or with explicit config (when you already have it)
+let config = Config.parse "verifrog.toml"
+let result = Iverilog.runSimple "." config "shift_reg_tb"
 ```
 
 **IverilogResult:**

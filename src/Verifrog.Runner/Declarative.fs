@@ -218,7 +218,7 @@ let private executeStep (sim: Sim) (step: Step) (file: string) (line: int) =
         | _ -> ()
 
     | StepCycles count ->
-        sim.Step(count)
+        sim.Step(count) |> ignore
 
     | Expect (signal, op, expected) ->
         let actual = sim.ReadOrFail(signal)

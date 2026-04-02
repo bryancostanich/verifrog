@@ -87,44 +87,80 @@ DYLD_LIBRARY_PATH=$PWD/verifrog/build dotnet test verifrog/tests/Khalkulo.Tests.
 
 ---
 
-## Phase 1: Document Existing Debug Workflow
+## Phase 1: Document Existing Debug Workflow ✓
 
 Zero new code — just docs and config that unlock what already works.
 
-- [ ] Verify `netcoredbg` works with Verifrog test projects (install, test)
-- [ ] Write `launch.json` template for VS Code F# test debugging
-  - DYLD_LIBRARY_PATH / LD_LIBRARY_PATH in env
-  - Program path to test project
-  - Working directory set correctly
-- [ ] Have `verifrog init` generate `.vscode/launch.json` alongside the test project
-- [ ] Document watch expression patterns for signal probing:
+- [x] Verify `netcoredbg` works with Verifrog test projects (install, test)
+  - **Finding**: netcoredbg 3.1.2 installed but is x86_64; segfaults on arm64 Mac (Rosetta can't debug arm64 .NET processes)
+  - Samsung only ships amd64 macOS binaries (no arm64 in any release)
+  - VS Code debugging works via C# extension's `vsdbg` (arm64 native, `coreclr` launch type)
+  - Phase 2 will need netcoredbg built from source for arm64 CLI debugging
+- [x] Write `launch.json` template for VS Code F# test debugging
+  - Two configs: "Debug Tests" (all) and "Debug Single Test" (with filter prompt)
+  - DYLD_LIBRARY_PATH / LD_LIBRARY_PATH pointing to build/
+  - --sequenced flag for Verilator thread safety
+- [x] Have `verifrog init` generate `.vscode/launch.json` alongside the test project
+  - Updated `doInit` in `src/Verifrog.Cli/Program.fs`
+  - Creates `.vscode/` directory with `launch.json`
+  - Output messages updated to mention VS Code config and F5
+- [x] Document watch expression patterns for signal probing:
   - `sim.ReadOrFail("signal_name")` as a watch
   - `sim.Cycle` as a watch
-  - `sim.ListSignals() |> List.filter (fun s -> s.Contains("fsm"))` for discovery
+  - `sim.ListSignals() |> Array.filter (fun s -> s.Contains("fsm"))` for discovery
   - `sim.ForceCount` to check active forces
-- [ ] Document conditional breakpoints as signal watchpoints:
-  - "Break when `sim.ReadOrFail("u_fsm.state") = 15L`" (ERROR state)
-- [ ] Add debug guide to docs/
-- [ ] Update README with debug section
+- [x] Document conditional breakpoints as signal watchpoints:
+  - "Break when `sim.ReadOrFail("u_fsm.state") == 15`" (ERROR state)
+  - Conditions table with common patterns
+- [x] Add debug guide to docs/
+  - Created `docs/debug-guide.md` — full guide with setup, watches, conditionals, checkpoints, troubleshooting
+- [x] Update README with debug section
+  - Added "Debugging" section with quick-start and watch expression examples
+  - Added debug guide to docs table in README and docs/README.md
 
-## Phase 2: `verifrog debug-dap` CLI Wrapper
+## Phase 2: `verifrog debug-dap` CLI Wrapper ✓
 
 Thin wrapper that manages a DAP session for non-GUI debugging (Claude, SSH, CI).
 
-- [ ] Check if `netcoredbg --interpreter=cli` gives a usable GDB-like interface
-- [ ] If yes: wrapper script that launches with the right args and auto-breakpoints
-- [ ] If no: write a minimal DAP client in F# that speaks JSON to `netcoredbg --interpreter=vscode`
-- [ ] Commands:
-  - `verifrog debug-dap <project-dir> [--test "name"]` — launch and pause
-  - `verifrog debug-eval <expr>` — evaluate F# expression in paused context
-  - `verifrog debug-step [n]` — step N sim cycles (eval `sim.Step(n)`)
-  - `verifrog debug-read <signal>` — shorthand for eval ReadOrFail
-  - `verifrog debug-signals [filter]` — list signals matching filter
-  - `verifrog debug-checkpoint <name>` — save state
-  - `verifrog debug-restore <name>` — restore state
-  - `verifrog debug-quit` — tear down session
-- [ ] Session state persisted via the running netcoredbg process (stays alive between commands)
-- [ ] Test: Claude can run a full debug session across multiple bash calls
+- [x] Check if `netcoredbg --interpreter=cli` gives a usable GDB-like interface
+  - **Yes**: CLI mode provides break, run, print, step, continue, set args, etc.
+  - But the x86_64 binary segfaults on arm64 Mac (Rosetta can't debug arm64 .NET processes)
+- [x] Build netcoredbg from source for arm64 macOS
+  - Built 3.1.3 from Samsung/netcoredbg source (cmake + clang++, took ~3 min)
+  - Installed to `~/.local/bin/netcoredbg/` replacing x86_64 binary
+  - Old x86_64 binary backed up to `~/.local/bin/netcoredbg-x86_64-backup/`
+- [x] Wrapper script: `bin/verifrog-dap-session` (Python 3)
+  - Manages netcoredbg lifecycle via subprocess with stdin/stdout pipes
+  - Two-stage breakpoint: breaks at `Program.main` first (loads modules), then client sets file:line breakpoints
+  - Client communicates via named FIFOs (`cmd.fifo`, `resp.fifo`) with `---END---` delimiter
+  - Resume commands (`continue`, `run`, `next`, `step`) wait for `stopped` event
+  - Regular commands use timeout-based response collection
+- [x] Commands (all implemented in `bin/verifrog`):
+  - `verifrog debug-dap <project-dir> [--test "name"]` — launch session, pause at main
+  - `verifrog debug-eval <expr>` — evaluate expression (auto-detects debugger commands vs F# expressions)
+  - `verifrog debug-step [n]` — step N sim cycles via `sim.StepCycles(n)`, returns new cycle count
+  - `verifrog debug-read <signal>` — shorthand for `sim.ReadOrFail("signal")`
+  - `verifrog debug-signals` — list all signals via `sim.ListSignals()`
+  - `verifrog debug-checkpoint <name>` — save state via `sim.Save("name")`
+  - `verifrog debug-restore <name>` — restore state via `sim.Restore("name")`, returns cycle count
+  - `verifrog debug-quit` — tear down session cleanly
+- [x] Session state persisted via running netcoredbg process (Python broker stays alive between CLI calls)
+- [x] Tested: full debug session across multiple bash calls works
+  - Start → set breakpoint → continue → read signal → step → checkpoint → restore → quit
+- [x] Sim API changes for debugger compatibility:
+  - `Sim.Step()` now returns `uint64` (cycle count) instead of `unit`
+  - Added `Sim.StepCycles(n)` — non-optional int overload (netcoredbg can't call F# optional params)
+  - Added `Sim.Save(name)` — non-optional overload of `SaveCheckpoint`
+  - Added `Sim.Restore(name)` — returns `uint64` cycle count instead of unit
+  - `Declarative.fs` updated for new return type (`|> ignore`)
+  - All 39 framework tests pass
+
+### Known limitations
+- netcoredbg evaluates **C# expressions**, not F#. F# lambdas, semicolons, `|>` don't work.
+- Methods returning `unit`/void can't be called via `print` — use the new non-optional overloads.
+- macOS SIP strips `DYLD_LIBRARY_PATH` from child processes of signed binaries. Workaround: `debug-dap` symlinks `libverifrog_sim.dylib` into the test DLL directory.
+- Signal filtering (`debug-signals <filter>`) not yet implemented — F# lambda syntax doesn't work in C# evaluator.
+- File:line breakpoints only resolve after modules are loaded (handled by two-stage approach).
 
 ## Phase 3: VS Code Extension
 

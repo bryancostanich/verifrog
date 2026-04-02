@@ -110,10 +110,15 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
         let c = defaultArg cycles 10
         sim_reset(ctx, c)
 
-    /// Advance the simulation by N clock cycles
-    member _.Step(?n: int) =
-        let count = defaultArg n 1
-        sim_step(ctx, count)
+    /// Advance the simulation by N clock cycles. Returns the new cycle count.
+    member this.Step(?n: int) : uint64 =
+        this.StepCycles(defaultArg n 1)
+
+    /// Advance the simulation by exactly n clock cycles. Returns the new cycle count.
+    /// (Non-optional overload for debugger compatibility)
+    member _.StepCycles(n: int) : uint64 =
+        sim_step(ctx, n)
+        sim_get_cycle(ctx)
 
     /// Current cycle count (since last reset)
     member _.Cycle = sim_get_cycle(ctx)
@@ -172,6 +177,9 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
         checkpoints.[name] <- cp
         cp
 
+    /// Save a named checkpoint (non-optional overload for debugger compatibility)
+    member this.Save(name: string) = this.SaveCheckpoint(name)
+
     /// Restore from a named checkpoint
     member _.RestoreCheckpoint(name: string) =
         match checkpoints.TryGetValue(name) with
@@ -179,6 +187,12 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
             let rc = sim_restore(ctx, cp.Ptr)
             if rc <> 0 then failwith $"sim_restore() failed for checkpoint '{name}'"
         | false, _ -> failwith $"Checkpoint not found: {name}"
+
+    /// Restore from a named checkpoint. Returns the restored cycle count.
+    /// (Non-optional overload for debugger compatibility)
+    member this.Restore(name: string) : uint64 =
+        this.RestoreCheckpoint(name)
+        sim_get_cycle(ctx)
 
     /// List all named checkpoints
     member _.ListCheckpoints() =

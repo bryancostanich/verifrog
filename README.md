@@ -268,12 +268,35 @@ See the full [Configuration Reference](docs/config-reference.md).
 | [iverilog_tb](samples/iverilog_tb/) | Dual-backend: Verilator + iverilog under one `dotnet test` |
 | [i2c_bfm](samples/i2c_bfm/) | Protocol-level BFM with auto-detection, timing-accurate I2C |
 
+## Debugging
+
+Verifrog tests are standard .NET projects, so you get full VS Code debugger support — breakpoints, watch expressions, step-through, and conditional breakpoints — all wired into the live simulation.
+
+```bash
+verifrog init my-project    # Generates .vscode/launch.json automatically
+verifrog build my-project
+code my-project             # Open in VS Code, set a breakpoint, press F5
+```
+
+Once paused at a breakpoint, use **Watch expressions** to probe signals in real time:
+
+```
+sim.ReadOrFail("u_fsm.state")                                    // Read any signal
+sim.Cycle                                                         // Current cycle count
+sim.ListSignals() |> Array.filter (fun s -> s.Contains("fsm"))   // Discover signals
+```
+
+Use **conditional breakpoints** as signal watchpoints — "break when `sim.ReadOrFail("u_fsm.state") == 15`" pauses only when the FSM enters the ERROR state.
+
+See the full [Debug Guide](docs/debug-guide.md) for setup, watch expression patterns, and tips.
+
 ## Documentation
 
 | Guide | For |
 |---|---|
 | [Getting Started](docs/getting-started.md) | First-time setup, end-to-end walkthrough |
 | [Core Concepts](docs/concepts.md) | How signals, checkpoints, forces, memories, and registers work |
+| [Debug Guide](docs/debug-guide.md) | VS Code debugging: breakpoints, signal watches, conditional breakpoints |
 | [API Reference](docs/api-reference.md) | Every method on Sim, Memory, Register, Expect, and more |
 | [VCD Parser Guide](docs/vcd-guide.md) | Using the VCD library to analyze waveforms |
 | [VCD CLI Reference](docs/vcd-cli.md) | Command-line VCD analysis tool |

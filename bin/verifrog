@@ -78,6 +78,16 @@ Commands:
   vcd <file.vcd> [options]      Analyze VCD waveform files
   results <junit.xml> [-o path] Convert JUnit XML to Markdown report
 
+DAP Debug Session (persistent, for AI/SSH/CI):
+  debug-dap [dir] [--test "name"]   Launch debug session
+  debug-eval <expr>                 Evaluate F# expression
+  debug-step [n]                    Step N sim cycles (default: 1)
+  debug-read <signal>               Read signal value
+  debug-signals [filter]            List signals (optional filter)
+  debug-checkpoint <name>           Save sim state
+  debug-restore <name>              Restore sim state
+  debug-quit                        End debug session
+
 Options:
   -h, --help                    Show this help
 
@@ -94,6 +104,15 @@ Examples:
   verifrog debug
   verifrog debug --script probe.txt
   verifrog vcd output/sim.vcd --signal "fsm*" --debug
+
+  # DAP debug session (for Claude / SSH)
+  verifrog debug-dap samples/counter
+  verifrog debug-read count
+  verifrog debug-step 10
+  verifrog debug-read count
+  verifrog debug-checkpoint before_overflow
+  verifrog debug-eval "sim.ReadOrFail(\"overflow\")"
+  verifrog debug-quit
 USAGE
 }
 
@@ -281,18 +300,348 @@ cmd_vcd() {
     dotnet run --project "$VCD_PROJECT" -- "$@"
 }
 
+# ---- Debug-DAP session management ----
+#
+# These commands manage a persistent netcoredbg debug session. The session
+# runs netcoredbg in the background with its stdin/stdout connected via FIFOs.
+# This allows multiple bash invocations to send commands to the same paused
+# debugger — exactly what's needed for AI-assisted debugging (Claude) and SSH.
+#
+# Session state lives in /tmp/verifrog-debug-<pid>/
+#   - pid         — netcoredbg process ID
+#   - in.fifo     — write commands here
+#   - out.fifo    — read responses here
+#   - project_dir — project directory for context
+
+SESSION_DIR_PREFIX="/tmp/verifrog-debug"
+
+# Find the active session directory (most recent)
+find_session() {
+    local latest=""
+    for d in "$SESSION_DIR_PREFIX"-*/; do
+        [[ -d "$d" ]] || continue
+        local pidfile="$d/pid"
+        [[ -f "$pidfile" ]] || continue
+        local pid
+        pid=$(cat "$pidfile")
+        if kill -0 "$pid" 2>/dev/null; then
+            latest="$d"
+        else
+            # Stale session — clean up
+            rm -rf "$d"
+        fi
+    done
+    if [[ -n "$latest" ]]; then
+        echo "$latest"
+        return 0
+    fi
+    return 1
+}
+
+# Find netcoredbg binary
+find_netcoredbg() {
+    # Check VERIFROG_NETCOREDBG override first
+    if [[ -n "${VERIFROG_NETCOREDBG:-}" ]] && [[ -x "$VERIFROG_NETCOREDBG" ]]; then
+        echo "$VERIFROG_NETCOREDBG"
+        return 0
+    fi
+    # Check common locations
+    local candidates=(
+        "$HOME/.local/bin/netcoredbg/netcoredbg"
+        "/usr/local/bin/netcoredbg"
+        "/usr/bin/netcoredbg"
+    )
+    for c in "${candidates[@]}"; do
+        [[ -x "$c" ]] && { echo "$c"; return 0; }
+    done
+    # Fall back to PATH
+    command -v netcoredbg 2>/dev/null && return 0
+    return 1
+}
+
+# Send a command to the debug session broker and read the response.
+# The broker (verifrog-dap-session) handles netcoredbg I/O and uses
+# "---END---" as a response delimiter.
+session_send() {
+    local session_dir="$1"
+    shift
+    local cmd="$*"
+
+    local cmd_fifo="$session_dir/cmd.fifo"
+    local resp_fifo="$session_dir/resp.fifo"
+
+    # Send command to broker
+    echo "$cmd" > "$cmd_fifo"
+
+    # Read response until delimiter (open FIFO once via fd to avoid per-line reopen)
+    local output=""
+    local line
+    exec 5< "$resp_fifo"
+    while IFS= read -r line <&5; do
+        [[ "$line" == "---END---" ]] && break
+        output+="$line"$'\n'
+    done
+    exec 5<&-
+
+    # Print non-empty output
+    [[ -n "$output" ]] && echo "$output" | sed '/^$/d'
+}
+
+cmd_debug_dap() {
+    local dir="."
+    local test_filter=""
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --test)
+                test_filter="$2"
+                shift 2
+                ;;
+            *)
+                dir="$1"
+                shift
+                ;;
+        esac
+    done
+
+    # Check for existing session
+    if find_session >/dev/null 2>&1; then
+        die "Debug session already running. Use 'verifrog debug-quit' first."
+    fi
+
+    # Find netcoredbg
+    local ncdbg
+    ncdbg=$(find_netcoredbg) || die "netcoredbg not found. Install it or set VERIFROG_NETCOREDBG."
+
+    # Find verifrog.toml and build info
+    local toml
+    toml=$(find_toml "$dir") || die "verifrog.toml not found (searched up from $dir)"
+    local project_root
+    project_root="$(dirname "$toml")"
+    local build_dir
+    build_dir="$project_root/$(read_build_dir "$toml")"
+
+    # Find test project — check project-local tests/ first, then repo-level tests/
+    local test_proj=""
+    if [[ -d "$project_root/tests" ]]; then
+        test_proj=$(find "$project_root/tests" -maxdepth 2 -name "*.fsproj" | head -1)
+    fi
+    if [[ -z "$test_proj" && -d "$VERIFROG_ROOT/tests" ]]; then
+        test_proj=$(find "$VERIFROG_ROOT/tests" -maxdepth 2 -name "*.fsproj" | head -1)
+    fi
+    [[ -n "$test_proj" ]] || die "No test project (.fsproj) found in $project_root/tests/ or $VERIFROG_ROOT/tests/"
+
+    # Find the built DLL
+    local test_name
+    test_name=$(basename "$test_proj" .fsproj)
+    local test_dll="$(dirname "$test_proj")/bin/Debug/net8.0/$test_name.dll"
+
+    # Build in Debug config if DLL doesn't exist
+    if [[ ! -f "$test_dll" ]]; then
+        echo "Building test project..."
+        dotnet build "$test_proj" -c Debug --nologo -q 2>&1 || die "Build failed"
+    fi
+    [[ -f "$test_dll" ]] || die "Test DLL not found: $test_dll. Run 'dotnet build $test_proj -c Debug' first."
+
+    # Symlink native library next to the test DLL.
+    # macOS SIP strips DYLD_LIBRARY_PATH from child processes launched by signed
+    # binaries (netcoredbg → dotnet), so we place the lib where DllImport can find it.
+    local lib_ext
+    case "$(uname -s)" in
+        Darwin) lib_ext="dylib" ;;
+        *)      lib_ext="so" ;;
+    esac
+    local native_lib="$build_dir/libverifrog_sim.$lib_ext"
+    local dll_dir
+    dll_dir="$(dirname "$test_dll")"
+    if [[ -f "$native_lib" && ! -e "$dll_dir/libverifrog_sim.$lib_ext" ]]; then
+        ln -sf "$native_lib" "$dll_dir/libverifrog_sim.$lib_ext"
+    fi
+
+    # Create session directory with FIFOs for the broker
+    local session_dir
+    session_dir=$(mktemp -d "${SESSION_DIR_PREFIX}-XXXXXX")
+    mkfifo "$session_dir/cmd.fifo"
+    mkfifo "$session_dir/resp.fifo"
+    echo "$project_root" > "$session_dir/project_dir"
+
+    # Set library path
+    local path_var
+    path_var=$(lib_path_var)
+    export "$path_var"="$build_dir${!path_var:+:${!path_var}}"
+
+    # netcoredbg launch args — the broker handles the two-stage breakpoint setup
+    local ncdbg_args=(
+        --interpreter=cli
+        -- dotnet exec "$test_dll" --sequenced
+    )
+    if [[ -n "$test_filter" ]]; then
+        ncdbg_args+=(--filter-test-case "$test_filter")
+    fi
+
+    # Launch the session broker in the background
+    local broker="$SCRIPT_DIR/verifrog-dap-session"
+    [[ -x "$broker" ]] || die "Session broker not found: $broker"
+
+    "$broker" "$session_dir" "$ncdbg" "${ncdbg_args[@]}" &
+    local broker_pid=$!
+    echo "$broker_pid" > "$session_dir/pid"
+
+    # Wait for Stage 1 (main breakpoint hit)
+    local retries=0
+    while [[ $retries -lt 20 ]]; do
+        if [[ -f "$session_dir/status" ]]; then
+            local status
+            status=$(cat "$session_dir/status")
+            if [[ "$status" == "STAGE1_DONE" ]]; then
+                break
+            elif [[ "$status" == INIT_ERROR* ]]; then
+                rm -rf "$session_dir"
+                die "Debug session init failed: $status"
+            fi
+        fi
+        if ! kill -0 "$broker_pid" 2>/dev/null; then
+            rm -rf "$session_dir"
+            die "Debug session failed to start (broker exited). Check that netcoredbg is arm64-native."
+        fi
+        sleep 1
+        retries=$((retries + 1))
+    done
+
+    if [[ $retries -ge 20 ]]; then
+        kill "$broker_pid" 2>/dev/null
+        rm -rf "$session_dir"
+        die "Debug session timed out waiting for main breakpoint"
+    fi
+
+    echo "Debug session started (paused at main)"
+    echo "  Session:  $session_dir"
+    echo "  PID:      $broker_pid"
+    echo "  Project:  $project_root"
+    echo "  Test DLL: $test_dll"
+    if [[ -n "$test_filter" ]]; then
+        echo "  Filter:   $test_filter"
+    fi
+    echo ""
+    echo "Commands:"
+    echo "  verifrog debug-eval <expr>         Evaluate F# expression"
+    echo "  verifrog debug-step [n]            Step N sim cycles"
+    echo "  verifrog debug-read <signal>       Read signal value"
+    echo "  verifrog debug-signals [filter]    List signals"
+    echo "  verifrog debug-checkpoint <name>   Save sim state"
+    echo "  verifrog debug-restore <name>      Restore sim state"
+    echo "  verifrog debug-quit                End session"
+    echo ""
+    echo "To enter a test, set a breakpoint and continue:"
+    echo "  verifrog debug-eval 'break SimTests.fs:22'"
+    echo "  verifrog debug-eval 'continue'"
+}
+
+cmd_debug_eval() {
+    local session_dir
+    session_dir=$(find_session) || die "No active debug session. Run 'verifrog debug-dap' first."
+    [[ $# -gt 0 ]] || die "Usage: verifrog debug-eval <expression>"
+    local expr="$*"
+    # If it looks like a debugger command (break, continue, etc.), send raw
+    case "$expr" in
+        break*|continue|c|run|r|next|n|step|s|finish|info*|backtrace|bt|list*|delete*|disable*|enable*)
+            session_send "$session_dir" "$expr"
+            ;;
+        *)
+            session_send "$session_dir" "print $expr"
+            ;;
+    esac
+}
+
+cmd_debug_step() {
+    local session_dir
+    session_dir=$(find_session) || die "No active debug session. Run 'verifrog debug-dap' first."
+    local n="${1:-1}"
+    # StepCycles has a non-optional int param (debugger-compatible), returns cycle count
+    session_send "$session_dir" "print sim.StepCycles($n)"
+}
+
+cmd_debug_read() {
+    local session_dir
+    session_dir=$(find_session) || die "No active debug session. Run 'verifrog debug-dap' first."
+    [[ $# -gt 0 ]] || die "Usage: verifrog debug-read <signal>"
+    local signal="$1"
+    session_send "$session_dir" "print sim.ReadOrFail(\"$signal\")"
+}
+
+cmd_debug_signals() {
+    local session_dir
+    session_dir=$(find_session) || die "No active debug session. Run 'verifrog debug-dap' first."
+    # ListSignals returns F# list — netcoredbg will show it as a nested structure
+    # Filtering with F# lambdas doesn't work in netcoredbg's C# evaluator
+    session_send "$session_dir" "print sim.ListSignals()"
+}
+
+cmd_debug_checkpoint() {
+    local session_dir
+    session_dir=$(find_session) || die "No active debug session. Run 'verifrog debug-dap' first."
+    [[ $# -gt 0 ]] || die "Usage: verifrog debug-checkpoint <name>"
+    # Save uses non-optional overload for debugger compatibility
+    session_send "$session_dir" "print sim.Save(\"$1\")"
+}
+
+cmd_debug_restore() {
+    local session_dir
+    session_dir=$(find_session) || die "No active debug session. Run 'verifrog debug-dap' first."
+    [[ $# -gt 0 ]] || die "Usage: verifrog debug-restore <name>"
+    # Restore uses non-optional overload that returns cycle count
+    session_send "$session_dir" "print sim.Restore(\"$1\")"
+}
+
+cmd_debug_quit() {
+    local session_dir
+    session_dir=$(find_session) || die "No active debug session."
+
+    local pid
+    pid=$(cat "$session_dir/pid")
+
+    # Tell the broker to shut down (it sends 'quit' to netcoredbg and cleans up)
+    echo "__quit__" > "$session_dir/cmd.fifo" 2>/dev/null || true
+
+    # Read the final response (open FIFO once)
+    local line
+    exec 5< "$session_dir/resp.fifo" 2>/dev/null || true
+    while IFS= read -r line <&5 2>/dev/null; do
+        [[ "$line" == "---END---" ]] && break
+        echo "$line"
+    done
+    exec 5<&- 2>/dev/null || true
+
+    # Wait for broker to exit, force kill if needed
+    sleep 1
+    kill "$pid" 2>/dev/null || true
+    wait "$pid" 2>/dev/null || true
+
+    # Clean up any leftover session dir (broker normally does this)
+    rm -rf "$session_dir" 2>/dev/null || true
+    echo "Debug session ended."
+}
+
 # ---- Dispatch ----
 
 [[ $# -eq 0 ]] && { usage; exit 0; }
 
 case "$1" in
-    init)    shift; cmd_init "$@" ;;
-    build)   shift; cmd_build "$@" ;;
-    clean)   shift; cmd_clean "$@" ;;
-    test)    shift; cmd_test "$@" ;;
-    debug)   shift; cmd_debug "$@" ;;
-    vcd)     shift; cmd_vcd "$@" ;;
-    results) shift; cmd_results "$@" ;;
+    init)              shift; cmd_init "$@" ;;
+    build)             shift; cmd_build "$@" ;;
+    clean)             shift; cmd_clean "$@" ;;
+    test)              shift; cmd_test "$@" ;;
+    debug)             shift; cmd_debug "$@" ;;
+    debug-dap)         shift; cmd_debug_dap "$@" ;;
+    debug-eval)        shift; cmd_debug_eval "$@" ;;
+    debug-step)        shift; cmd_debug_step "$@" ;;
+    debug-read)        shift; cmd_debug_read "$@" ;;
+    debug-signals)     shift; cmd_debug_signals "$@" ;;
+    debug-checkpoint)  shift; cmd_debug_checkpoint "$@" ;;
+    debug-restore)     shift; cmd_debug_restore "$@" ;;
+    debug-quit)        shift; cmd_debug_quit ;;
+    vcd)               shift; cmd_vcd "$@" ;;
+    results)           shift; cmd_results "$@" ;;
     -h|--help|help) usage ;;
     *)       die "Unknown command: $1. Run 'verifrog --help' for usage." ;;
 esac

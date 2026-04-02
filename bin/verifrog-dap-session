@@ -1,0 +1,253 @@
+#!/usr/bin/env python3
+"""
+verifrog-dap-session — background broker between client FIFOs and netcoredbg.
+
+Launched by 'verifrog debug-dap'. Manages a netcoredbg process with proper
+stdin/stdout pipe handling and response framing.
+
+Two-stage launch:
+  Stage 1: Break at Program.main to let modules load
+  Stage 2: Client sets breakpoints and continues via cmd.fifo/resp.fifo
+
+Protocol:
+  Client writes one line to cmd.fifo (a netcoredbg CLI command).
+  Broker forwards to netcoredbg, collects response, writes to resp.fifo + "---END---".
+  Commands starting with "continue", "run", "next", "step", "finish" wait for "stopped".
+  "__quit__" tears everything down.
+"""
+
+import os
+import re
+import signal
+import subprocess
+import sys
+import threading
+import time
+
+SESSION_DIR = sys.argv[1]
+NCDBG_BIN = sys.argv[2]
+NCDBG_ARGS = sys.argv[3:]
+
+CMD_FIFO = os.path.join(SESSION_DIR, "cmd.fifo")
+RESP_FIFO = os.path.join(SESSION_DIR, "resp.fifo")
+STATUS_FILE = os.path.join(SESSION_DIR, "status")
+
+# ANSI escape code regex
+ANSI_RE = re.compile(r'\x1b\[[0-9;]*m')
+
+# Commands that resume execution — need to wait for "stopped" or "exited"
+RESUME_COMMANDS = {"continue", "c", "run", "r", "next", "n", "step", "s", "finish"}
+
+# Output buffer: background thread reads netcoredbg stdout into this
+output_lock = threading.Lock()
+output_lines = []
+output_event = threading.Event()  # Signaled when new lines arrive
+
+
+def reader_thread(proc):
+    """Read netcoredbg stdout line by line into the shared buffer."""
+    for raw_line in proc.stdout:
+        line = raw_line.rstrip('\n')
+        with output_lock:
+            output_lines.append(line)
+        output_event.set()
+
+
+def drain(timeout=3.0):
+    """Collect new lines added since last drain, with timeout."""
+    start = len(output_lines)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        output_event.wait(timeout=0.2)
+        output_event.clear()
+        with output_lock:
+            current = len(output_lines)
+        if current > start:
+            # Reset deadline — keep reading while output flows
+            deadline = time.time() + 1.0
+    with output_lock:
+        new = output_lines[start:]
+    return new
+
+
+def wait_for_pattern(pattern, timeout=20.0):
+    """Read lines until one matches pattern or timeout."""
+    start = len(output_lines)
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        output_event.wait(timeout=0.5)
+        output_event.clear()
+        with output_lock:
+            current_len = len(output_lines)
+            new = output_lines[start:current_len]
+        for line in new:
+            cleaned = strip_ansi(line)
+            if re.search(pattern, cleaned):
+                return new, True
+        start = current_len
+    with output_lock:
+        return output_lines[start:], False
+
+
+LOG_FILE = os.path.join(SESSION_DIR, "broker.log")
+
+def log(msg):
+    with open(LOG_FILE, 'a') as f:
+        f.write(f"[{time.time():.1f}] {msg}\n")
+
+def send(proc, cmd):
+    """Send a command to netcoredbg."""
+    log(f"SEND: {cmd}")
+    proc.stdin.write(cmd + '\n')
+    proc.stdin.flush()
+
+
+def strip_ansi(text):
+    return ANSI_RE.sub('', text)
+
+
+def write_response(lines):
+    """Write response lines to resp.fifo."""
+    with open(RESP_FIFO, 'w') as f:
+        for line in lines:
+            cleaned = strip_ansi(line)
+            if cleaned.strip():
+                f.write(cleaned + '\n')
+        f.write('---END---\n')
+
+
+def cleanup(proc):
+    if proc.poll() is None:
+        proc.terminate()
+        try:
+            proc.wait(timeout=3)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+    try:
+        import shutil
+        shutil.rmtree(SESSION_DIR, ignore_errors=True)
+    except Exception:
+        pass
+
+
+def main():
+    # Launch netcoredbg
+    env = os.environ.copy()
+    proc = subprocess.Popen(
+        [NCDBG_BIN] + NCDBG_ARGS,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1,  # Line buffered
+        env=env,
+    )
+
+    log(f"NCDBG_BIN: {NCDBG_BIN}")
+    log(f"NCDBG_ARGS: {NCDBG_ARGS}")
+    log(f"Full cmd: {[NCDBG_BIN] + NCDBG_ARGS}")
+
+    # Start background reader
+    reader = threading.Thread(target=reader_thread, args=(proc,), daemon=True)
+    reader.start()
+
+    def sighandler(signum, frame):
+        cleanup(proc)
+        sys.exit(0)
+
+    signal.signal(signal.SIGTERM, sighandler)
+    signal.signal(signal.SIGINT, sighandler)
+
+    try:
+        # Give netcoredbg and reader thread time to start
+        time.sleep(1)
+
+        # Stage 1: break at main and run
+        send(proc, "set just-my-code 0")
+        time.sleep(0.5)
+        drain(1)
+        send(proc, "break Verifrog.Tests.Program.main")
+        time.sleep(0.5)
+        drain(1)
+        send(proc, "run")
+
+        _, found = wait_for_pattern(r"stopped.*breakpoint.*hit", timeout=20)
+        if found:
+            with open(STATUS_FILE, 'w') as f:
+                f.write("STAGE1_DONE")
+        else:
+            with open(STATUS_FILE, 'w') as f:
+                f.write("INIT_ERROR: main breakpoint not hit")
+            cleanup(proc)
+            return
+
+        # Main command loop
+        while True:
+            # Read one command from the client FIFO (blocks)
+            with open(CMD_FIFO, 'r') as f:
+                cmd = f.readline().strip()
+
+            if not cmd:
+                continue
+
+            log(f"CMD_FIFO: '{cmd}'")
+
+            if cmd == "__quit__":
+                try:
+                    send(proc, "quit")
+                    time.sleep(0.5)
+                except Exception:
+                    pass
+                write_response(["Session ended."])
+                break
+
+            # Capture position before sending so we don't miss fast responses
+            with output_lock:
+                before = len(output_lines)
+
+            # Send command
+            send(proc, cmd)
+
+            # Determine if this is a resume command
+            first_word = cmd.split()[0] if cmd.split() else ""
+            if first_word in RESUME_COMMANDS:
+                # Wait for stopped/exited event, starting from before position
+                deadline = time.time() + 30
+                lines = []
+                found = False
+                while time.time() < deadline:
+                    output_event.wait(timeout=0.5)
+                    output_event.clear()
+                    with output_lock:
+                        lines = output_lines[before:]
+                    for line in lines:
+                        cleaned = strip_ansi(line)
+                        if re.search(r"stopped|exited", cleaned):
+                            found = True
+                            break
+                    if found:
+                        break
+                log(f"RESUME result: found={found}, lines={len(lines)}")
+                for l in lines:
+                    log(f"  RESUME_LINE: {strip_ansi(l)}")
+            else:
+                # Regular command — wait for response
+                time.sleep(2)
+                with output_lock:
+                    lines = output_lines[before:]
+                log(f"COLLECT result: lines={len(lines)}")
+
+            log(f"RESPONSE: {[strip_ansi(l) for l in lines if strip_ansi(l).strip()]}")
+            write_response(lines)
+
+    except Exception as e:
+        try:
+            write_response([f"Error: {e}"])
+        except Exception:
+            pass
+    finally:
+        cleanup(proc)
+
+
+if __name__ == "__main__":
+    main()

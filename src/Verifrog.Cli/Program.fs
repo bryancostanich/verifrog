@@ -128,6 +128,60 @@ let private programTemplate = String.concat "\n" [
     "    runTestsInAssemblyWithCLIArgs [] argv"
 ]
 
+let private launchJsonTemplate = String.concat "\n" [
+    "{"
+    "    \"version\": \"0.2.0\","
+    "    \"configurations\": ["
+    "        {"
+    "            \"name\": \"Debug Tests\","
+    "            \"type\": \"coreclr\","
+    "            \"request\": \"launch\","
+    "            \"program\": \"dotnet\","
+    "            \"args\": ["
+    "                \"run\","
+    "                \"--project\", \"${workspaceFolder}/tests/Tests.fsproj\","
+    "                \"--\","
+    "                \"--sequenced\""
+    "            ],"
+    "            \"cwd\": \"${workspaceFolder}\","
+    "            \"env\": {"
+    "                \"DYLD_LIBRARY_PATH\": \"${workspaceFolder}/build\","
+    "                \"LD_LIBRARY_PATH\": \"${workspaceFolder}/build\""
+    "            },"
+    "            \"console\": \"integratedTerminal\","
+    "            \"stopAtEntry\": false"
+    "        },"
+    "        {"
+    "            \"name\": \"Debug Single Test\","
+    "            \"type\": \"coreclr\","
+    "            \"request\": \"launch\","
+    "            \"program\": \"dotnet\","
+    "            \"args\": ["
+    "                \"run\","
+    "                \"--project\", \"${workspaceFolder}/tests/Tests.fsproj\","
+    "                \"--\","
+    "                \"--sequenced\","
+    "                \"--filter\", \"${input:testName}\""
+    "            ],"
+    "            \"cwd\": \"${workspaceFolder}\","
+    "            \"env\": {"
+    "                \"DYLD_LIBRARY_PATH\": \"${workspaceFolder}/build\","
+    "                \"LD_LIBRARY_PATH\": \"${workspaceFolder}/build\""
+    "            },"
+    "            \"console\": \"integratedTerminal\","
+    "            \"stopAtEntry\": false"
+    "        }"
+    "    ],"
+    "    \"inputs\": ["
+    "        {"
+    "            \"id\": \"testName\","
+    "            \"type\": \"promptString\","
+    "            \"description\": \"Test name (substring match)\""
+    "        }"
+    "    ]"
+    "}"
+]
+
 let private doInit (targetDir: string) =
     let dir = Path.GetFullPath(targetDir)
     Directory.CreateDirectory(dir) |> ignore
@@ -137,20 +191,25 @@ let private doInit (targetDir: string) =
         1
     else
     let testDir = Path.Combine(dir, "tests")
+    let vscodeDir = Path.Combine(dir, ".vscode")
     Directory.CreateDirectory(testDir) |> ignore
+    Directory.CreateDirectory(vscodeDir) |> ignore
     File.WriteAllText(tomlPath, tomlTemplate)
     File.WriteAllText(Path.Combine(testDir, "Tests.fsproj"), fsprojTemplate)
     File.WriteAllText(Path.Combine(testDir, "Tests.fs"), testsTemplate)
     File.WriteAllText(Path.Combine(testDir, "DeclarativeLoader.fs"), declarativeLoaderTemplate)
     File.WriteAllText(Path.Combine(testDir, "Program.fs"), programTemplate)
+    File.WriteAllText(Path.Combine(vscodeDir, "launch.json"), launchJsonTemplate)
     printfn "Created verifrog project in %s" dir
     printfn "  verifrog.toml  — edit design config"
     printfn "  tests/         — sample test project"
+    printfn "  .vscode/       — VS Code debug config"
     printfn ""
     printfn "Next steps:"
     printfn "  1. Edit verifrog.toml with your design info"
     printfn "  2. Run: verifrog build"
     printfn "  3. Run: dotnet test tests/"
+    printfn "  4. Open in VS Code and press F5 to debug"
     0
 
 // ---- Build command ----

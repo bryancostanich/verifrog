@@ -11,6 +11,10 @@ Extract and generalize khalkulo's simulation tooling into a standalone, open-sou
 | Track | Description |
 |-------|-------------|
 | 01_core | Core framework: Sim, VCD, Runner, CLI, samples, docs, khalkulo migration |
+| 03_brew | Homebrew formula packaging |
+| 04_launch | Public launch preparation |
+| 06_debug_integration | Debug tooling integration |
+| 07_community_outreach | Publicize verifrog — blog post, Reddit, HN, FOSSi, F# community |
 
 ## Key Decisions
 

@@ -6,7 +6,7 @@
 
     <!-- NuGet package metadata -->
     <PackageId>Verifrog.Sim</PackageId>
-    <Version>1.0.0</Version>
+    <Version>1.2.0</Version>
     <Description>Core simulation API for the Verifrog Verilog testing framework. Wraps Verilator models with signal access, checkpoints, forces, and TOML-driven memory/register access.</Description>
     <Authors>Bryan Costanich</Authors>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>

@@ -25,11 +25,14 @@ type Step =
     | Checkpoint of name: string
     | Restore of name: string
 
+/// A step with its source line number
+type LocatedStep = { Step: Step; Line: int }
+
 /// A parsed test
 type DeclTest = {
     Name: string
     Category: string option
-    Steps: Step list
+    Steps: LocatedStep list
     File: string
     Line: int
 }
@@ -68,7 +71,7 @@ let parse (filePath: string) : DeclTest list =
     let lines = File.ReadAllLines(filePath)
     let file = Path.GetFileName(filePath)
     let mutable tests = []
-    let mutable currentTest: (string * string option * int * Step list) option = None
+    let mutable currentTest: (string * string option * int * LocatedStep list) option = None
 
     let finishTest () =
         match currentTest with
@@ -77,10 +80,10 @@ let parse (filePath: string) : DeclTest list =
             currentTest <- None
         | None -> ()
 
-    let addStep step =
+    let addStep stepLine step =
         match currentTest with
         | Some (name, cat, line, steps) ->
-            currentTest <- Some (name, cat, line, step :: steps)
+            currentTest <- Some (name, cat, line, { Step = step; Line = stepLine } :: steps)
         | None -> fail file 0 "Step outside of a test block"
 
     for i in 0 .. lines.Length - 1 do
@@ -115,13 +118,13 @@ let parse (filePath: string) : DeclTest list =
                     if parts.Length <> 2 then fail file lineNum $"Invalid write: {pair.Trim()}"
                     let signal = parts.[0].Trim()
                     let value = requireValue (parts.[1].Trim()) file lineNum
-                    addStep (Write (signal, value))
+                    addStep lineNum (Write (signal, value))
 
             // step N
             elif line.StartsWith("step ") then
                 let n = line.[5..].Trim()
                 match Int32.TryParse(n) with
-                | true, count -> addStep (StepCycles count)
+                | true, count -> addStep lineNum (StepCycles count)
                 | _ -> fail file lineNum $"Invalid step count: {n}"
 
             // expect signal == value  OR  expect signal != value
@@ -135,14 +138,14 @@ let parse (filePath: string) : DeclTest list =
                     let addr = int memMatch.Groups.[3].Value
                     let op = memMatch.Groups.[4].Value
                     let value = requireValue (memMatch.Groups.[5].Value) file lineNum
-                    addStep (ExpectMemory (mem, bank, addr, op, value))
+                    addStep lineNum (ExpectMemory (mem, bank, addr, op, value))
                 else
                     let m = Regex.Match(rest, """^(\S+)\s*(==|!=)\s*(.+)$""")
                     if not m.Success then fail file lineNum $"Invalid expect: {rest}"
                     let signal = m.Groups.[1].Value
                     let op = m.Groups.[2].Value
                     let value = requireValue (m.Groups.[3].Value) file lineNum
-                    addStep (Expect (signal, op, value))
+                    addStep lineNum (Expect (signal, op, value))
 
             // load memory bank=N [data, ...]
             elif line.StartsWith("load ") then
@@ -153,7 +156,7 @@ let parse (filePath: string) : DeclTest list =
                     let mem = fromMatch.Groups.[1].Value
                     let bank = int fromMatch.Groups.[2].Value
                     let path = fromMatch.Groups.[3].Value.Trim()
-                    addStep (LoadFromFile (mem, bank, path))
+                    addStep lineNum (LoadFromFile (mem, bank, path))
                 else
                     // load mem bank=N [val1, val2, ...]
                     let dataMatch = Regex.Match(rest, """^(\w+)\s+bank=(\d+)\s+\[(.+)\]$""")
@@ -162,7 +165,7 @@ let parse (filePath: string) : DeclTest list =
                     let bank = int dataMatch.Groups.[2].Value
                     let dataStr = dataMatch.Groups.[3].Value
                     let data = dataStr.Split(',') |> Array.map (fun s -> requireValue (s.Trim()) file lineNum) |> Array.toList
-                    addStep (Load (mem, bank, data))
+                    addStep lineNum (Load (mem, bank, data))
 
             // run-until signal == value, max = N
             elif line.StartsWith("run-until ") then
@@ -172,7 +175,7 @@ let parse (filePath: string) : DeclTest list =
                 let signal = m.Groups.[1].Value
                 let value = requireValue (m.Groups.[2].Value) file lineNum
                 let max = int m.Groups.[3].Value
-                addStep (RunUntil (signal, value, max))
+                addStep lineNum (RunUntil (signal, value, max))
 
             // force signal = value
             elif line.StartsWith("force ") then
@@ -181,22 +184,22 @@ let parse (filePath: string) : DeclTest list =
                 if parts.Length <> 2 then fail file lineNum $"Invalid force: {rest}"
                 let signal = parts.[0].Trim()
                 let value = requireValue (parts.[1].Trim()) file lineNum
-                addStep (Force (signal, value))
+                addStep lineNum (Force (signal, value))
 
             // release signal
             elif line.StartsWith("release ") then
                 let signal = line.[8..].Trim()
-                addStep (Release signal)
+                addStep lineNum (Release signal)
 
             // checkpoint name
             elif line.StartsWith("checkpoint ") then
                 let name = line.[11..].Trim()
-                addStep (Checkpoint name)
+                addStep lineNum (Checkpoint name)
 
             // restore name
             elif line.StartsWith("restore ") then
                 let name = line.[8..].Trim()
-                addStep (Restore name)
+                addStep lineNum (Restore name)
 
             else
                 fail file lineNum $"Unknown command: {line}"
@@ -210,7 +213,7 @@ let parse (filePath: string) : DeclTest list =
 // ---- Runner: convert DeclTests to Expecto tests ----
 
 /// Execute a single step against a Sim instance
-let private executeStep (sim: Sim) (step: Step) (file: string) (line: int) =
+let executeStep (sim: Sim) (step: Step) (file: string) (line: int) =
     match step with
     | Write (signal, value) ->
         match sim.Write(signal, value) with
@@ -305,22 +308,22 @@ let private executeStep (sim: Sim) (step: Step) (file: string) (line: int) =
 
 /// Extract all signal names referenced in a test's steps
 let private referencedSignals (test: DeclTest) : (string * string * int) list =
-    [ for step in test.Steps do
-        match step with
-        | Write (s, _) -> yield (s, test.File, test.Line)
-        | Expect (s, _, _) -> yield (s, test.File, test.Line)
-        | RunUntil (s, _, _) -> yield (s, test.File, test.Line)
-        | Force (s, _) -> yield (s, test.File, test.Line)
-        | Release s -> yield (s, test.File, test.Line)
+    [ for ls in test.Steps do
+        match ls.Step with
+        | Write (s, _) -> yield (s, test.File, ls.Line)
+        | Expect (s, _, _) -> yield (s, test.File, ls.Line)
+        | RunUntil (s, _, _) -> yield (s, test.File, ls.Line)
+        | Force (s, _) -> yield (s, test.File, ls.Line)
+        | Release s -> yield (s, test.File, ls.Line)
         | _ -> () ]
 
 /// Extract all memory names referenced in a test's steps
 let private referencedMemories (test: DeclTest) : (string * string * int) list =
-    [ for step in test.Steps do
-        match step with
-        | ExpectMemory (m, _, _, _, _) -> yield (m, test.File, test.Line)
-        | Load (m, _, _) -> yield (m, test.File, test.Line)
-        | LoadFromFile (m, _, _) -> yield (m, test.File, test.Line)
+    [ for ls in test.Steps do
+        match ls.Step with
+        | ExpectMemory (m, _, _, _, _) -> yield (m, test.File, ls.Line)
+        | Load (m, _, _) -> yield (m, test.File, ls.Line)
+        | LoadFromFile (m, _, _) -> yield (m, test.File, ls.Line)
         | _ -> () ]
 
 /// Strip all array indices from a signal path to get the base path.
@@ -384,8 +387,8 @@ let private toExpectoTest (test: DeclTest) : Test =
         use sim = Sim.Create()
         Sim.SuppressDisplay(true)
         sim.Reset()
-        for step in test.Steps do
-            executeStep sim step test.File test.Line)
+        for ls in test.Steps do
+            executeStep sim ls.Step test.File ls.Line)
 
 /// Convert a DeclTest to an Expecto Test using a TOML config
 let private toExpectoTestWithConfig (config: Config.VerifrogConfig) (test: DeclTest) : Test =
@@ -393,8 +396,8 @@ let private toExpectoTestWithConfig (config: Config.VerifrogConfig) (test: DeclT
         use sim = Sim.Create(config)
         Sim.SuppressDisplay(true)
         sim.Reset()
-        for step in test.Steps do
-            executeStep sim step test.File test.Line)
+        for ls in test.Steps do
+            executeStep sim ls.Step test.File ls.Line)
 
 /// Group tests by category and wrap in testList
 let private groupByCategory (tests: DeclTest list) (toTest: DeclTest -> Test) : Test list =

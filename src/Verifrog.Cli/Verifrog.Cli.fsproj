@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <ProjectReference Include="../Verifrog.Sim/Verifrog.Sim.fsproj" />
+    <ProjectReference Include="../Verifrog.Runner/Verifrog.Runner.fsproj" />
   </ItemGroup>
 
 </Project>

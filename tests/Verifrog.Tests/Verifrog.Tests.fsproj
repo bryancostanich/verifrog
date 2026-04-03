@@ -15,9 +15,7 @@
     <Compile Include="SimTests.fs" />
     <Compile Include="VcdTests.fs" />
     <Compile Include="RunnerTests.fs" />
-    <!-- DeclarativeTests.fs replaced by generated code (verifrog codegen) -->
-    <!-- <Compile Include="DeclarativeTests.fs" /> -->
-    <Compile Include="generated/**/*.g.fs" />
+    <Compile Include="DeclarativeTests.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

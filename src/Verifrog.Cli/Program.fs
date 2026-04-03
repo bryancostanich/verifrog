@@ -5,7 +5,6 @@ open System.Diagnostics
 open System.IO
 open Verifrog.Sim
 open Verifrog.Sim.Config
-open Verifrog.Runner
 open Verifrog.Cli.Debugger
 
 // ---- Helpers ----
@@ -379,49 +378,6 @@ let private doDebug (projectDir: string) (scriptPath: string option) =
     | None -> runInteractive sim []
     0
 
-// ---- Code generation ----
-
-let private doCodegen (projectDir: string) =
-    let dir = Path.GetFullPath(projectDir)
-    let tomlPath =
-        match findToml dir with
-        | Some p -> p
-        | None ->
-            eprintfn "verifrog.toml not found in %s or parent directories" dir
-            exit 1
-
-    let config = parse tomlPath
-    let testsDir = config.Test.Tests
-
-    let files =
-        if Directory.Exists(testsDir) then
-            Directory.GetFiles(testsDir, "*.verifrog", SearchOption.AllDirectories)
-            |> Array.toList
-        else []
-
-    if files.IsEmpty then
-        printfn "No .verifrog files found in %s" testsDir
-        0
-    else
-        // Output to generated/ next to the .verifrog files by default,
-        // or to --output dir if specified
-        let outDir = Path.Combine(testsDir, "generated")
-        Directory.CreateDirectory(outDir) |> ignore
-        printfn "Output: %s" outDir
-
-        for file in files do
-            let tests = Verifrog.Runner.Declarative.parse file
-            let code = Verifrog.Runner.Codegen.generateTestFile tomlPath file tests
-            let baseName = Path.GetFileNameWithoutExtension(file).Replace(".", "_")
-            let outName = Char.ToUpperInvariant(baseName.[0]).ToString() + baseName.[1..] + "_verifrog.g.fs"
-            let outPath = Path.Combine(outDir, outName)
-            File.WriteAllText(outPath, code)
-            printfn "  %s" outPath
-
-        printfn ""
-        printfn "Generated %d file(s) in %s" files.Length outDir
-        0
-
 // ---- Entry point ----
 
 [<EntryPoint>]
@@ -433,7 +389,6 @@ let main argv =
         printfn "  init [dir]          Scaffold a new verifrog project"
         printfn "  build [dir]         Build Verilator model from verifrog.toml"
         printfn "  clean [dir]         Remove build artifacts"
-        printfn "  codegen [dir]       Generate F# from .verifrog files (enables breakpoints)"
         printfn "  debug [dir]         Interactive simulation debugger"
         printfn "  debug --script <f>  Run debugger script"
         printfn "  debug-server [dir]  JSON debug server (stdin/stdout)"
@@ -458,9 +413,6 @@ let main argv =
         | "mcp-server" ->
             let dir = if rest.Length > 0 then rest.[0] else "."
             doMcpServer dir
-        | "codegen" ->
-            let dir = if rest.Length > 0 then rest.[0] else "."
-            doCodegen dir
         | "debug" ->
             // Parse debug args: [dir] [--script <path>]
             let mutable dir = "."

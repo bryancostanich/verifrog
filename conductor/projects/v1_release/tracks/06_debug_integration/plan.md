@@ -235,8 +235,16 @@ Phase 2 used a bash/Python/netcoredbg chain: `verifrog debug-dap` → Python bro
 
 ### Tasks
 
-- [ ] Add `--json` flag to Debugger.fs commands — each command returns a JSON object with `status`, `cycle`, `data` fields
-- [ ] Add `verifrog debug-server` CLI command — launches Debugger.fs in server mode (reads JSON commands from stdin, writes JSON responses to stdout, stays alive)
+- [x] Add `DebugServer.fs` — JSON command processor built on the Sim API
+  - Reads one JSON command per line from stdin, writes one JSON response per line to stdout
+  - Emits `{"status":"ready"}` on startup with cycle and signal count
+  - Stays alive until `{"cmd":"quit"}` received
+- [x] Add `verifrog debug-server [dir]` CLI command (Program.fs + bin/verifrog)
+  - Loads verifrog.toml, builds sim, launches JSON server
+  - Sets DYLD_LIBRARY_PATH/LD_LIBRARY_PATH automatically
+- [x] All commands return structured JSON — tested end-to-end:
+  - status, step, read (single/multi), write, checkpoint, restore, signals (with filter),
+    force, release, release-all, reset, run-until, quit
 - [ ] MCP server wrapper — thin MCP protocol layer over the debug-server, exposing tools:
   - `debug_start(project, test_name)` → `{ status, cycle, signal_count }`
   - `debug_step(n)` → `{ cycle, signals: { name: value, ... } }`

@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <Compile Include="Debugger.fs" />
+    <Compile Include="DebugServer.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
 

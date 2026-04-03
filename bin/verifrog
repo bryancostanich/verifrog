@@ -295,6 +295,22 @@ cmd_debug() {
     dotnet run --project "$CLI_PROJECT" -- debug "$@"
 }
 
+cmd_debug_server() {
+    local dir="${1:-.}"
+    local toml
+    toml=$(find_toml "$dir") || die "verifrog.toml not found"
+    local project_root
+    project_root="$(dirname "$toml")"
+    local build_dir
+    build_dir="$project_root/$(read_build_dir "$toml")"
+
+    local path_var
+    path_var=$(lib_path_var)
+    export "$path_var"="$build_dir${!path_var:+:${!path_var}}"
+
+    dotnet run --project "$CLI_PROJECT" -- debug-server "$dir"
+}
+
 cmd_vcd() {
     [[ $# -eq 0 ]] && die "Usage: verifrog vcd <file.vcd> [options]"
     dotnet run --project "$VCD_PROJECT" -- "$@"
@@ -632,6 +648,7 @@ case "$1" in
     clean)             shift; cmd_clean "$@" ;;
     test)              shift; cmd_test "$@" ;;
     debug)             shift; cmd_debug "$@" ;;
+    debug-server)      shift; cmd_debug_server "$@" ;;
     debug-dap)         shift; cmd_debug_dap "$@" ;;
     debug-eval)        shift; cmd_debug_eval "$@" ;;
     debug-step)        shift; cmd_debug_step "$@" ;;

@@ -88,7 +88,14 @@ let private openProject (projectPath: string) : Result<Sim, string> =
         if not (File.Exists(libPath)) then
             Result.Error $"Sim library not found: {libPath}. Run 'verifrog build' first."
         else
-            Environment.SetEnvironmentVariable("VERIFROG_SIM_LIB", libPath)
+            // Symlink the native lib next to the running executable so P/Invoke finds it.
+            // This must happen before the first Sim.Create — .NET caches the loaded library.
+            let exeDir = AppContext.BaseDirectory
+            let symlinkPath = Path.Combine(exeDir, libName)
+            try
+                if File.Exists(symlinkPath) then File.Delete(symlinkPath)
+                File.CreateSymbolicLink(symlinkPath, libPath) |> ignore
+            with _ -> () // best-effort; may fail on some platforms
             let sim = Sim.Create(config)
             sim.Reset()
             Result.Ok sim

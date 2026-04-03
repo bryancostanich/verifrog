@@ -317,6 +317,34 @@ let private doDebugServer (projectDir: string) =
     DebugServer.runServer sim
     0
 
+// ---- MCP server command ----
+
+let private doMcpServer (projectDir: string) =
+    let dir = Path.GetFullPath(projectDir)
+    let tomlPath =
+        match findToml dir with
+        | Some p -> p
+        | None ->
+            eprintfn "verifrog.toml not found (searched up from %s)" dir
+            exit 1
+
+    let config = parse tomlPath
+    let buildDir = config.Test.Output
+    let libName = if OperatingSystem.IsMacOS() then "libverifrog_sim.dylib" else "libverifrog_sim.so"
+    let libPath = Path.Combine(buildDir, libName)
+
+    if not (File.Exists(libPath)) then
+        eprintfn "Sim library not found: %s" libPath
+        eprintfn "Run 'verifrog build' first."
+        exit 1
+
+    Environment.SetEnvironmentVariable("VERIFROG_SIM_LIB", libPath)
+
+    use sim = Sim.Create(config)
+    sim.Reset()
+    McpServer.runMcpServer sim
+    0
+
 // ---- Debug command ----
 
 let private doDebug (projectDir: string) (scriptPath: string option) =
@@ -364,6 +392,7 @@ let main argv =
         printfn "  debug [dir]         Interactive simulation debugger"
         printfn "  debug --script <f>  Run debugger script"
         printfn "  debug-server [dir]  JSON debug server (stdin/stdout)"
+        printfn "  mcp-server [dir]    MCP debug server (for Claude)"
         0
     else
         let cmd = argv.[0]
@@ -381,6 +410,9 @@ let main argv =
         | "debug-server" ->
             let dir = if rest.Length > 0 then rest.[0] else "."
             doDebugServer dir
+        | "mcp-server" ->
+            let dir = if rest.Length > 0 then rest.[0] else "."
+            doMcpServer dir
         | "debug" ->
             // Parse debug args: [dir] [--script <path>]
             let mutable dir = "."

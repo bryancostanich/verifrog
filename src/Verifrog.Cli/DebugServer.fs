@@ -185,13 +185,73 @@ let private handleCommand (sim: Sim) (doc: JsonDocument) : obj =
     | _ ->
         errorResponse $"unknown command: {cmd}"
 
+// ---- Session replay ----
+
+/// Convert a recorded command sequence to a .verifrog declarative test script
+let replayToVerifrog (commands: (string * JsonDocument) list) : string =
+    let sb = System.Text.StringBuilder()
+    sb.AppendLine("# Recorded debug session") |> ignore
+    sb.AppendLine("") |> ignore
+    sb.AppendLine("test \"replay session\" [Unit]:") |> ignore
+    for (cmd, doc) in commands do
+        let root = doc.RootElement
+        match cmd with
+        | "step" ->
+            let n = if root.TryGetProperty("n") |> fst then root.GetProperty("n").GetInt32() else 1
+            sb.AppendLine($"  step {n}") |> ignore
+        | "write" ->
+            let signal = root.GetProperty("signal").GetString()
+            let value = root.GetProperty("value").GetInt64()
+            sb.AppendLine($"  write {signal} = {value}") |> ignore
+        | "read" ->
+            // Reads become expects at the current value (snapshot assertion)
+            let signals =
+                if root.TryGetProperty("signals") |> fst then
+                    let arr = root.GetProperty("signals")
+                    [| for i in 0 .. arr.GetArrayLength() - 1 -> arr.[i].GetString() |]
+                elif root.TryGetProperty("signal") |> fst then
+                    [| root.GetProperty("signal").GetString() |]
+                else [||]
+            for s in signals do
+                sb.AppendLine($"  # read {s}") |> ignore
+        | "checkpoint" ->
+            let name = root.GetProperty("name").GetString()
+            sb.AppendLine($"  checkpoint {name}") |> ignore
+        | "restore" ->
+            let name = root.GetProperty("name").GetString()
+            sb.AppendLine($"  restore {name}") |> ignore
+        | "force" ->
+            let signal = root.GetProperty("signal").GetString()
+            let value = root.GetProperty("value").GetInt64()
+            sb.AppendLine($"  force {signal} = {value}") |> ignore
+        | "release" ->
+            let signal = root.GetProperty("signal").GetString()
+            sb.AppendLine($"  release {signal}") |> ignore
+        | "run-until" ->
+            let signal = root.GetProperty("signal").GetString()
+            let value = root.GetProperty("value").GetInt64()
+            let maxCycles = if root.TryGetProperty("maxCycles") |> fst then root.GetProperty("maxCycles").GetInt32() else 10000
+            sb.AppendLine($"  run-until {signal} == {value}, max = {maxCycles}") |> ignore
+        | "reset" ->
+            sb.AppendLine("  # reset") |> ignore
+        | _ -> ()
+    sb.ToString()
+
 // ---- Server loop ----
 
 /// Run the JSON debug server. Reads from stdin, writes to stdout.
 /// Emits a ready message on startup, then processes commands until quit.
+/// Supports session recording: send {"cmd":"record"} to start, {"cmd":"save-replay","path":"file.verifrog"} to save.
 let runServer (sim: Sim) =
     let writer = Console.Out
     let reader = Console.In
+
+    // Session recording state
+    let mutable recording = false
+    let recorded = System.Collections.Generic.List<string * JsonDocument>()
+
+    // Commands that get recorded (sim-modifying commands)
+    let recordable = Set.ofList ["step"; "write"; "read"; "checkpoint"; "restore"; "force"; "release"; "run-until"; "reset"]
 
     // Emit ready message
     writeResponse writer
@@ -208,15 +268,36 @@ let runServer (sim: Sim) =
             let trimmed = line.Trim()
             if trimmed.Length > 0 then
                 try
-                    use doc = JsonDocument.Parse(trimmed)
-                    let response = handleCommand sim doc
-                    writeResponse writer response
-                    // Check for quit
-                    match response with
-                    | :? {| status: string |} as r when r.status = "quit" ->
-                        running <- false
+                    let doc = JsonDocument.Parse(trimmed)
+                    let root = doc.RootElement
+                    let cmd =
+                        if root.TryGetProperty("cmd") |> fst then root.GetProperty("cmd").GetString()
+                        else ""
+
+                    // Handle record/save-replay before dispatch
+                    match cmd with
+                    | "record" ->
+                        recording <- true
+                        recorded.Clear()
+                        writeResponse writer {| status = "ok"; message = "Recording started" |}
+                    | "save-replay" ->
+                        let path =
+                            if root.TryGetProperty("path") |> fst then root.GetProperty("path").GetString()
+                            else ""
+                        if String.IsNullOrEmpty(path) then
+                            writeResponse writer (errorResponse "save-replay requires 'path' field")
+                        else
+                            let script = replayToVerifrog (recorded |> Seq.toList)
+                            File.WriteAllText(path, script)
+                            recording <- false
+                            writeResponse writer {| status = "ok"; path = path; commands = recorded.Count |}
                     | _ ->
-                        // Check status field via JSON round-trip
+                        // Record if active
+                        if recording && recordable.Contains(cmd) then
+                            recorded.Add(cmd, doc)
+
+                        let response = handleCommand sim doc
+                        writeResponse writer response
                         let respJson = JsonSerializer.Serialize(response, jsonOpts)
                         if respJson.Contains("\"status\":\"quit\"") then
                             running <- false

@@ -245,21 +245,22 @@ Phase 2 used a bash/Python/netcoredbg chain: `verifrog debug-dap` → Python bro
 - [x] All commands return structured JSON — tested end-to-end:
   - status, step, read (single/multi), write, checkpoint, restore, signals (with filter),
     force, release, release-all, reset, run-until, quit
-- [ ] MCP server wrapper — thin MCP protocol layer over the debug-server, exposing tools:
-  - `debug_start(project, test_name)` → `{ status, cycle, signal_count }`
-  - `debug_step(n)` → `{ cycle, signals: { name: value, ... } }`
-  - `debug_read(signals[])` → `{ cycle, values: { name: value, ... } }`
-  - `debug_write(signal, value)` → `{ status }`
-  - `debug_checkpoint(name)` → `{ status, cycle, name }`
-  - `debug_restore(name)` → `{ status, cycle }`
-  - `debug_signals(filter?)` → `{ signals: string[] }`
-  - `debug_force(signal, value)` → `{ status }`
-  - `debug_release(signal)` → `{ status }`
-  - `debug_eval(expression)` → `{ result }` (for advanced use)
-  - `debug_quit()` → `{ status }`
-- [ ] Each tool call returns structured JSON, not raw text
-- [ ] Auto-attach to failing tests: when a test fails, offer to debug it
-- [ ] Session replay: record debug commands → save as `.verifrog` script or F# test
+- [x] MCP server (`McpServer.fs`) — native F# JSON-RPC 2.0 implementation, no external dependencies
+  - Implements `initialize`, `initialized`, `tools/list`, `tools/call`, `ping`
+  - 11 tools: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_signals`,
+    `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`
+  - Each tool returns MCP-compliant `content[{type:"text", text:"..."}]` format
+  - Tool schemas with proper `inputSchema`, `required` fields, descriptions
+  - `verifrog mcp-server [dir]` CLI command
+  - Tested with full MCP handshake + tool calls
+- [x] Auto-attach to failing tests
+  - `verifrog test` now prints debug session suggestions on test failure
+  - Shows `verifrog debug`, `verifrog debug-server`, and `verifrog mcp-server` commands
+- [x] Session replay — record debug commands → save as `.verifrog` script
+  - `{"cmd":"record"}` starts recording commands
+  - `{"cmd":"save-replay","path":"file.verifrog"}` exports as declarative test
+  - Writes become `write`, steps become `step`, checkpoints/forces/run-until mapped 1:1
+  - Reads become comments (observations, not assertions — user converts to `expect`)
 
 ## Concept Mapping
 

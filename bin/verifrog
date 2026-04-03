@@ -251,6 +251,19 @@ cmd_test() {
         dotnet fsi "$SCRIPT_DIR/junit-to-md.fsx" "$junit_xml" "$report_path" 2>&1
     fi
 
+    # On failure, suggest debug session
+    if [[ $exit_code -ne 0 ]]; then
+        echo ""
+        echo "Tests failed. To debug interactively:"
+        echo "  verifrog debug $dir"
+        echo ""
+        echo "To start a JSON debug server (for Claude/AI):"
+        echo "  verifrog debug-server $dir"
+        echo ""
+        echo "To start an MCP debug server:"
+        echo "  verifrog mcp-server $dir"
+    fi
+
     return $exit_code
 }
 

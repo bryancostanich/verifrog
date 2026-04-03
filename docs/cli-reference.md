@@ -253,7 +253,7 @@ echo '{"cmd":"status"}' | verifrog debug-server
 #         {"checkpoints":[],"cycle":0,"forceCount":0,"signalCount":27,"status":"ok"}
 ```
 
-Commands: `status`, `step`, `read`, `write`, `checkpoint`, `restore`, `signals`, `force`, `release`, `run-until`, `reset`, `quit`, `record`, `save-replay`.
+Commands: `status`, `step`, `read`, `write`, `trace`, `checkpoint`, `restore`, `signals`, `force`, `release`, `run-until`, `reset`, `quit`, `record`, `save-replay`.
 
 ### `mcp-server` — MCP debug server
 
@@ -263,7 +263,7 @@ verifrog mcp-server [<project-dir>]
 
 Launches an MCP (Model Context Protocol) server over stdin/stdout. Speaks JSON-RPC 2.0, exposing simulation tools that Claude and other MCP clients can call directly.
 
-Tools: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
+Tools: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_trace`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
 
 ### `vcd` — Analyze VCD waveform files
 

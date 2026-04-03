@@ -32,6 +32,7 @@ The `verifrog-counter` MCP server provides direct simulation control. Use these 
 | `debug_status` | Cycle count, signal count, forces, checkpoints | First call — orient yourself |
 | `debug_signals` | List signal names (optional filter) | Discover what signals exist |
 | `debug_read` | Read signal values | Observe current state |
+| `debug_trace` | Record signals over N cycles | Watch how signals change over time |
 | `debug_write` | Write a signal value | Set up stimulus |
 | `debug_step` | Advance N clock cycles | Progress the simulation |
 | `debug_checkpoint` | Save simulation state | Before trying something risky |

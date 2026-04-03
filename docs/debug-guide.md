@@ -49,11 +49,14 @@ Each command is one JSON line, each response is one JSON line:
 {"cmd":"read","signals":["count","enable"]}
 {"status":"ok","cycle":10,"values":{"count":10,"enable":1}}
 
+{"cmd":"trace","signals":["count","overflow"],"n":5}
+{"status":"ok","cycles":5,"signals":["count","overflow"],"rows":[{"cycle":1,"values":{"count":1,"overflow":0}},{"cycle":2,"values":{"count":2,"overflow":0}},...]}
+
 {"cmd":"checkpoint","name":"mid"}
 {"status":"ok","name":"mid","cycle":10}
 ```
 
-Commands: `status`, `step`, `read`, `write`, `checkpoint`, `restore`, `signals`, `force`, `release`, `run-until`, `reset`, `quit`, `record`, `save-replay`.
+Commands: `status`, `step`, `read`, `write`, `trace`, `checkpoint`, `restore`, `signals`, `force`, `release`, `run-until`, `reset`, `quit`, `record`, `save-replay`.
 
 ### Session Replay
 
@@ -77,7 +80,7 @@ An MCP (Model Context Protocol) server that exposes simulation tools directly to
 verifrog mcp-server                # Speaks JSON-RPC 2.0 over stdio
 ```
 
-Tools available: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
+Tools available: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_trace`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
 
 To configure in Claude Code, add to your MCP settings:
 

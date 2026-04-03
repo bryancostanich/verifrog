@@ -1,0 +1,174 @@
+{
+  "name": "verifrog",
+  "displayName": "Verifrog",
+  "description": "RTL debugging and testing support for Verifrog — syntax highlighting, signal inspection, and simulation control",
+  "version": "0.1.0",
+  "publisher": "verifrog",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/bryancostanich/verifrog"
+  },
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages",
+    "Debuggers"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "languages": [
+      {
+        "id": "verifrog",
+        "aliases": ["Verifrog", "verifrog"],
+        "extensions": [".verifrog"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "verifrog",
+        "scopeName": "source.verifrog",
+        "path": "./syntaxes/verifrog.tmLanguage.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "verifrog.startDebug",
+        "title": "Verifrog: Start Debug Session",
+        "icon": "$(debug-start)"
+      },
+      {
+        "command": "verifrog.stepCycles",
+        "title": "Verifrog: Step N Cycles",
+        "icon": "$(debug-step-over)"
+      },
+      {
+        "command": "verifrog.runUntilSignal",
+        "title": "Verifrog: Run Until Signal",
+        "icon": "$(debug-continue)"
+      },
+      {
+        "command": "verifrog.saveCheckpoint",
+        "title": "Verifrog: Save Checkpoint",
+        "icon": "$(save)"
+      },
+      {
+        "command": "verifrog.restoreCheckpoint",
+        "title": "Verifrog: Restore Checkpoint",
+        "icon": "$(history)"
+      },
+      {
+        "command": "verifrog.toggleVcd",
+        "title": "Verifrog: Toggle VCD Tracing",
+        "icon": "$(pulse)"
+      },
+      {
+        "command": "verifrog.refreshSignals",
+        "title": "Verifrog: Refresh Signals",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "verifrog.addSignalWatch",
+        "title": "Add to Watch",
+        "icon": "$(eye)"
+      },
+      {
+        "command": "verifrog.setSignalWatchpoint",
+        "title": "Verifrog: Break When Signal Equals...",
+        "icon": "$(debug-breakpoint-conditional)"
+      }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "verifrog-panel",
+          "title": "Verifrog",
+          "icon": "$(circuit-board)"
+        }
+      ]
+    },
+    "views": {
+      "verifrog-panel": [
+        {
+          "id": "verifrog.signals",
+          "name": "Signals"
+        },
+        {
+          "id": "verifrog.checkpoints",
+          "name": "Checkpoints"
+        }
+      ]
+    },
+    "menus": {
+      "view/item/context": [
+        {
+          "command": "verifrog.addSignalWatch",
+          "when": "view == verifrog.signals",
+          "group": "inline"
+        },
+        {
+          "command": "verifrog.setSignalWatchpoint",
+          "when": "view == verifrog.signals"
+        },
+        {
+          "command": "verifrog.restoreCheckpoint",
+          "when": "view == verifrog.checkpoints",
+          "group": "inline"
+        }
+      ],
+      "debug/toolBar": [
+        {
+          "command": "verifrog.stepCycles",
+          "when": "verifrog.sessionActive"
+        },
+        {
+          "command": "verifrog.saveCheckpoint",
+          "when": "verifrog.sessionActive"
+        },
+        {
+          "command": "verifrog.toggleVcd",
+          "when": "verifrog.sessionActive"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Verifrog",
+      "properties": {
+        "verifrog.stepSize": {
+          "type": "number",
+          "default": 1,
+          "description": "Default number of cycles for Step N Cycles command"
+        },
+        "verifrog.vcdOutputPath": {
+          "type": "string",
+          "default": "output/debug.vcd",
+          "description": "Path for VCD trace output"
+        },
+        "verifrog.signalFilter": {
+          "type": "string",
+          "default": "",
+          "description": "Filter pattern for Signals panel (substring match)"
+        }
+      }
+    },
+    "breakpoints": [
+      {
+        "language": "verifrog"
+      }
+    ]
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "lint": "eslint src --ext ts",
+    "package": "npx @vscode/vsce package"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.0"
+  }
+}

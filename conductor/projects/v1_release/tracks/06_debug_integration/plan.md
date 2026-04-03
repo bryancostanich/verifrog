@@ -162,31 +162,44 @@ Thin wrapper that manages a DAP session for non-GUI debugging (Claude, SSH, CI).
 - Signal filtering (`debug-signals <filter>`) not yet implemented — F# lambda syntax doesn't work in C# evaluator.
 - File:line breakpoints only resolve after modules are loaded (handled by two-stage approach).
 
-## Phase 3: VS Code Extension
+## Phase 3: VS Code Extension ✓
 
 The premium experience — IDE-native RTL debugging.
 
-- [ ] Extension scaffold (TypeScript, VS Code extension API)
-- [ ] `.verifrog` language support:
-  - Syntax highlighting
-  - Breakpoints on declarative test lines (write, step, expect, etc.)
-  - Map breakpoints to `Declarative.executeStep` calls in the DAP session
-- [ ] Signals panel (TreeView):
-  - Lists all signals from `sim.ListSignals()`
-  - Shows current value, updates on each debug pause
-  - Filter/search
-  - Click to add as watch expression
-- [ ] Signal watchpoints:
-  - "Break when signal == value" UI
-  - Implemented as conditional breakpoints on the sim step loop
-- [ ] Waveform integration:
-  - Button to start VCD tracing
-  - Auto-open in Surfer VS Code extension (if installed)
-  - Or dump to file for GTKWave
-- [ ] Debug toolbar additions:
-  - "Step N cycles" button (configurable N)
-  - "Run until signal" quick input
-  - Checkpoint/restore buttons
+Extension lives in `src/Verifrog.VSCodeExtension/` with the other tools. Compiles with `npm run compile`, packages with `npm run package`.
+
+- [x] Extension scaffold (TypeScript, VS Code extension API)
+  - `package.json` with language, grammar, commands, views, menus, configuration, breakpoints
+  - `tsconfig.json` targeting ES2022/commonjs
+  - `language-configuration.json` with comment, bracket, folding, indentation rules
+  - Compiles clean, packages to `.vsix` (10.78 KB)
+- [x] `.verifrog` language support:
+  - TextMate grammar (`syntaxes/verifrog.tmLanguage.json`)
+  - Keywords: `test`, `write`, `step`, `expect`, `force`, `release`, `checkpoint`, `restore`, `run-until`
+  - Categories in `[brackets]` as tags, hex/decimal numbers, signal names as variables
+  - Breakpoints registered for `.verifrog` files
+  - Comment support (`#`)
+- [x] Signals panel (TreeView):
+  - `SignalsProvider` lists signals from `sim.ListSignals()` via DAP evaluate
+  - Shows current value for each signal (up to 50 for performance)
+  - Grouped by hierarchy prefix (e.g., `TOP.counter.*`)
+  - Cycle count header
+  - "Add to Watch" context menu (copies `sim.ReadOrFail("signal")` to clipboard)
+  - Refreshes on debug pause
+- [x] Signal watchpoints:
+  - "Break When Signal Equals..." command and context menu on signal items
+  - Copies condition expression to clipboard with instructions for conditional breakpoint
+  - (Programmatic conditional breakpoint creation not available in VS Code API)
+- [x] Waveform integration:
+  - Toggle VCD tracing command (`verifrog.toggleVcd`)
+  - Configurable output path (`verifrog.vcdOutputPath`)
+  - Auto-opens in Surfer extension if installed
+- [x] Debug toolbar additions:
+  - "Step N Cycles" button with input dialog (configurable default via `verifrog.stepSize`)
+  - "Run Until Signal" quick input (signal name → value → max cycles)
+  - "Save Checkpoint" / "Restore Checkpoint" buttons
+  - Checkpoints panel (TreeView) with inline restore button
+  - All added to `debug/toolBar` menu
 
 ## Phase 4: Claude Integration
 
@@ -219,10 +232,10 @@ Make interactive debugging a first-class capability for AI-assisted RTL debuggin
 | Checkpoint | Save sim state | DAP evaluate `sim.SaveCheckpoint("name")` |
 | Restore | Restore sim state | DAP evaluate `sim.RestoreCheckpoint("name")` |
 
-## Open Questions
+## Open Questions (resolved)
 
-- Does `netcoredbg` support evaluate-in-frame for F# closures (needed for `sim.ReadOrFail`)?
-- Can we evaluate during a conditional breakpoint check without side effects?
-- How to handle the native library path (`DYLD_LIBRARY_PATH`) in the DAP launch config?
-- Should Phase 3 (VS Code extension) be a separate repo (`verifrog-vscode`)?
-- For Phase 4 (Claude), is MCP the right interface or should it be simpler CLI tools?
+- **Does `netcoredbg` support evaluate-in-frame for F# closures?** — Yes, `sim.ReadOrFail("signal")` works. But only C# expression syntax; F# lambdas/semicolons don't work. Methods with optional params fail — use non-optional overloads (`StepCycles`, `Save`, `Restore`).
+- **Can we evaluate during a conditional breakpoint check without side effects?** — Yes, `sim.ReadOrFail()` is read-only.
+- **How to handle `DYLD_LIBRARY_PATH` in DAP launch config?** — VS Code launch.json `env` block works for VS Code debugging. For CLI/netcoredbg, symlink the dylib into the DLL directory to work around macOS SIP.
+- **Separate repo for VS Code extension?** — No, kept in `vscode-extension/` within the main repo. Tightly coupled to the framework.
+- **MCP or CLI for Claude?** — TBD in Phase 4. The Phase 2 CLI tools (`debug-dap`, `debug-read`, etc.) already work for Claude via bash calls.

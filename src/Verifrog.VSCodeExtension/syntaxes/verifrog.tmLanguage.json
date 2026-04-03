@@ -1,0 +1,128 @@
+{
+  "$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+  "name": "Verifrog",
+  "scopeName": "source.verifrog",
+  "patterns": [
+    { "include": "#comment" },
+    { "include": "#test-declaration" },
+    { "include": "#commands" },
+    { "include": "#numbers" },
+    { "include": "#strings" }
+  ],
+  "repository": {
+    "comment": {
+      "match": "#.*$",
+      "name": "comment.line.number-sign.verifrog"
+    },
+    "test-declaration": {
+      "match": "^\\s*(test)\\s+(\"[^\"]*\")\\s*(\\[[^\\]]*\\])?\\s*(:)",
+      "captures": {
+        "1": { "name": "keyword.control.test.verifrog" },
+        "2": { "name": "string.quoted.double.test-name.verifrog" },
+        "3": {
+          "patterns": [
+            {
+              "match": "\\[(\\w+)\\]",
+              "captures": {
+                "1": { "name": "support.type.category.verifrog" }
+              }
+            }
+          ]
+        },
+        "4": { "name": "punctuation.separator.colon.verifrog" }
+      }
+    },
+    "commands": {
+      "patterns": [
+        {
+          "match": "^\\s*(expect)\\s+(\\w[\\w.]*)\\s*(==|!=|>=|<=|>|<)\\s*",
+          "captures": {
+            "1": { "name": "keyword.control.expect.verifrog" },
+            "2": { "name": "variable.other.signal.verifrog" },
+            "3": { "name": "keyword.operator.comparison.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(write)\\s+(\\w[\\w.]*)\\s*(=)\\s*",
+          "captures": {
+            "1": { "name": "keyword.control.write.verifrog" },
+            "2": { "name": "variable.other.signal.verifrog" },
+            "3": { "name": "keyword.operator.assignment.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(step)\\s+(\\d+)",
+          "captures": {
+            "1": { "name": "keyword.control.step.verifrog" },
+            "2": { "name": "constant.numeric.integer.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(force)\\s+(\\w[\\w.]*)\\s*(=)\\s*",
+          "captures": {
+            "1": { "name": "keyword.control.force.verifrog" },
+            "2": { "name": "variable.other.signal.verifrog" },
+            "3": { "name": "keyword.operator.assignment.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(release)\\s+(\\w[\\w.]*)",
+          "captures": {
+            "1": { "name": "keyword.control.release.verifrog" },
+            "2": { "name": "variable.other.signal.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(checkpoint)\\s+(\\w+)",
+          "captures": {
+            "1": { "name": "keyword.control.checkpoint.verifrog" },
+            "2": { "name": "support.variable.label.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(restore)\\s+(\\w+)",
+          "captures": {
+            "1": { "name": "keyword.control.restore.verifrog" },
+            "2": { "name": "support.variable.label.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(run-until)\\s+(\\w[\\w.]*)\\s*(==)\\s*(\\d+|0x[0-9a-fA-F]+)\\s*,\\s*(max)\\s*(=)\\s*(\\d+)",
+          "captures": {
+            "1": { "name": "keyword.control.run-until.verifrog" },
+            "2": { "name": "variable.other.signal.verifrog" },
+            "3": { "name": "keyword.operator.comparison.verifrog" },
+            "4": { "name": "constant.numeric.verifrog" },
+            "5": { "name": "variable.parameter.verifrog" },
+            "6": { "name": "keyword.operator.assignment.verifrog" },
+            "7": { "name": "constant.numeric.integer.verifrog" }
+          }
+        },
+        {
+          "match": "^\\s*(run-until)\\s+(\\w[\\w.]*)\\s*(==)\\s*",
+          "captures": {
+            "1": { "name": "keyword.control.run-until.verifrog" },
+            "2": { "name": "variable.other.signal.verifrog" },
+            "3": { "name": "keyword.operator.comparison.verifrog" }
+          }
+        }
+      ]
+    },
+    "numbers": {
+      "patterns": [
+        {
+          "match": "\\b0x[0-9a-fA-F]+\\b",
+          "name": "constant.numeric.hex.verifrog"
+        },
+        {
+          "match": "\\b\\d+\\b",
+          "name": "constant.numeric.integer.verifrog"
+        }
+      ]
+    },
+    "strings": {
+      "match": "\"[^\"]*\"",
+      "name": "string.quoted.double.verifrog"
+    }
+  }
+}

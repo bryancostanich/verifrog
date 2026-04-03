@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "verifrog-counter": {
+      "command": "verifrog",
+      "args": ["mcp-server", "samples/counter"],
+      "description": "Verifrog RTL simulation debugger for the counter sample. Tools: debug_status, debug_step, debug_read, debug_write, debug_signals, debug_checkpoint, debug_restore, debug_force, debug_release, debug_run_until, debug_reset."
+    }
+  }
+}

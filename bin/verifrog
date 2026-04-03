@@ -662,6 +662,7 @@ case "$1" in
     test)              shift; cmd_test "$@" ;;
     debug)             shift; cmd_debug "$@" ;;
     debug-server)      shift; cmd_debug_server "$@" ;;
+    mcp-server)        shift; dotnet run --project "$SCRIPT_DIR/../src/Verifrog.Cli/Verifrog.Cli.fsproj" -- mcp-server "$@" ;;
     debug-dap)         shift; cmd_debug_dap "$@" ;;
     debug-eval)        shift; cmd_debug_eval "$@" ;;
     debug-step)        shift; cmd_debug_step "$@" ;;

@@ -263,7 +263,9 @@ verifrog mcp-server [<project-dir>]
 
 Launches an MCP (Model Context Protocol) server over stdin/stdout. Speaks JSON-RPC 2.0, exposing simulation tools that Claude and other MCP clients can call directly.
 
-Tools: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_trace`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
+The project directory is optional. If omitted, the server starts without a loaded project — use `debug_open` to load one dynamically. This enables a single global MCP config that works with any verifrog project.
+
+Tools: `debug_open`, `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_trace`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
 
 ### `vcd` — Analyze VCD waveform files
 

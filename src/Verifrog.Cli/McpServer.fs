@@ -54,6 +54,7 @@ let private toolResult (text: string) (isError: bool) =
 // ---- Tool definitions (as raw JSON for mixed-shape schemas) ----
 
 let private toolsJson = """[
+  {"name":"debug_open","description":"Open a verifrog project for debugging. Required before using other debug tools if server was started without a project.","inputSchema":{"type":"object","properties":{"project_path":{"type":"string","description":"Path to project directory containing verifrog.toml, or direct path to verifrog.toml"}},"required":["project_path"]}},
   {"name":"debug_status","description":"Get current simulation status: cycle count, signal count, active forces, checkpoints.","inputSchema":{"type":"object","properties":{}}},
   {"name":"debug_step","description":"Advance the simulation by N clock cycles. Returns the new cycle count.","inputSchema":{"type":"object","properties":{"n":{"type":"integer","description":"Number of cycles to step (default 1)"}}}},
   {"name":"debug_read","description":"Read one or more signal values by name. Returns signal names and their current values.","inputSchema":{"type":"object","properties":{"signals":{"type":"array","items":{"type":"string"},"description":"Signal names to read"}},"required":["signals"]}},
@@ -72,7 +73,44 @@ let private toolsElement = JsonDocument.Parse(toolsJson).RootElement
 
 // ---- Tool dispatch ----
 
-let private callTool (sim: Sim) (name: string) (args: JsonElement) : obj =
+let private openProject (projectPath: string) : Result<Sim, string> =
+    let absPath = Path.GetFullPath(projectPath)
+    let tomlPath =
+        if absPath.EndsWith("verifrog.toml") && File.Exists(absPath) then Some absPath
+        else Config.findToml absPath
+    match tomlPath with
+    | None -> Result.Error $"verifrog.toml not found in {absPath} or parent directories"
+    | Some tp ->
+        let config = Config.parse tp
+        let buildDir = config.Test.Output
+        let libName = if OperatingSystem.IsMacOS() then "libverifrog_sim.dylib" else "libverifrog_sim.so"
+        let libPath = Path.Combine(buildDir, libName)
+        if not (File.Exists(libPath)) then
+            Result.Error $"Sim library not found: {libPath}. Run 'verifrog build' first."
+        else
+            Environment.SetEnvironmentVariable("VERIFROG_SIM_LIB", libPath)
+            let sim = Sim.Create(config)
+            sim.Reset()
+            Result.Ok sim
+
+let private callTool (simRef: Sim option ref) (name: string) (args: JsonElement) : obj =
+    match name with
+    | "debug_open" ->
+        let projectPath = args.GetProperty("project_path").GetString()
+        match openProject projectPath with
+        | Result.Error msg -> toolResult $"Error: {msg}" true
+        | Result.Ok newSim ->
+            match simRef.Value with
+            | Some oldSim -> (oldSim :> IDisposable).Dispose()
+            | None -> ()
+            simRef.Value <- Some newSim
+            toolResult $"Opened project. Signals: {newSim.SignalCount}, cycle: {newSim.Cycle}" false
+
+    | _ when simRef.Value.IsNone ->
+        toolResult "No project loaded. Call debug_open with a project path first." true
+
+    | _ ->
+    let sim = simRef.Value.Value
     match name with
     | "debug_status" ->
         let cps = sim.ListCheckpoints() |> List.map (fun (n, cp) -> sprintf "%s (cycle %d)" n cp.Cycle)
@@ -177,14 +215,17 @@ let private callTool (sim: Sim) (name: string) (args: JsonElement) : obj =
 
 // ---- Server loop ----
 
-let runMcpServer (sim: Sim) =
+let runMcpServer (initialSim: Sim option) =
     let writer = Console.Out
     let reader = Console.In
+    let simRef = ref initialSim
 
     // Stderr for server-side logging (doesn't interfere with JSON-RPC on stdout)
     let log (msg: string) = eprintfn $"[verifrog-mcp] {msg}"
 
-    log $"Server starting. {sim.SignalCount} signals, cycle {sim.Cycle}"
+    match initialSim with
+    | Some sim -> log $"Server starting. {sim.SignalCount} signals, cycle {sim.Cycle}"
+    | None -> log "Server starting (no project loaded — use debug_open)"
 
     let mutable running = true
     while running do
@@ -243,7 +284,7 @@ let runMcpServer (sim: Sim) =
                         if p.TryGetProperty("arguments") |> fst then p.GetProperty("arguments")
                         else JsonDocument.Parse("{}").RootElement
                     log $"tools/call: {toolName}"
-                    let result = callTool sim toolName args
+                    let result = callTool simRef toolName args
                     writeLine writer (jsonResponse id result)
 
                 | "notifications/cancelled" ->

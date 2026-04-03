@@ -80,20 +80,24 @@ An MCP (Model Context Protocol) server that exposes simulation tools directly to
 verifrog mcp-server                # Speaks JSON-RPC 2.0 over stdio
 ```
 
-Tools available: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_trace`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
+Tools available: `debug_open`, `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_trace`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
 
-To configure in Claude Code, add to your MCP settings:
+The server can start without a project — use `debug_open` to load one dynamically. This allows a single global MCP config that works with any verifrog project.
+
+To configure in Claude Code, add to `~/.claude/mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "verifrog": {
       "command": "verifrog",
-      "args": ["mcp-server", "/path/to/your/project"]
+      "args": ["mcp-server"]
     }
   }
 }
 ```
+
+Then call `debug_open(project_path="/path/to/project")` to load a project. You can also pass a project path at startup: `verifrog mcp-server /path/to/project`.
 
 ## VS Code Integration
 

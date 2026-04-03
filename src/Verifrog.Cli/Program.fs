@@ -319,31 +319,36 @@ let private doDebugServer (projectDir: string) =
 
 // ---- MCP server command ----
 
-let private doMcpServer (projectDir: string) =
-    let dir = Path.GetFullPath(projectDir)
-    let tomlPath =
-        match findToml dir with
-        | Some p -> p
-        | None ->
-            eprintfn "verifrog.toml not found (searched up from %s)" dir
+let private doMcpServer (projectDir: string option) =
+    match projectDir with
+    | Some dir ->
+        let dir = Path.GetFullPath(dir)
+        let tomlPath =
+            match findToml dir with
+            | Some p -> p
+            | None ->
+                eprintfn "verifrog.toml not found (searched up from %s)" dir
+                exit 1
+
+        let config = parse tomlPath
+        let buildDir = config.Test.Output
+        let libName = if OperatingSystem.IsMacOS() then "libverifrog_sim.dylib" else "libverifrog_sim.so"
+        let libPath = Path.Combine(buildDir, libName)
+
+        if not (File.Exists(libPath)) then
+            eprintfn "Sim library not found: %s" libPath
+            eprintfn "Run 'verifrog build' first."
             exit 1
 
-    let config = parse tomlPath
-    let buildDir = config.Test.Output
-    let libName = if OperatingSystem.IsMacOS() then "libverifrog_sim.dylib" else "libverifrog_sim.so"
-    let libPath = Path.Combine(buildDir, libName)
+        Environment.SetEnvironmentVariable("VERIFROG_SIM_LIB", libPath)
 
-    if not (File.Exists(libPath)) then
-        eprintfn "Sim library not found: %s" libPath
-        eprintfn "Run 'verifrog build' first."
-        exit 1
-
-    Environment.SetEnvironmentVariable("VERIFROG_SIM_LIB", libPath)
-
-    use sim = Sim.Create(config)
-    sim.Reset()
-    McpServer.runMcpServer sim
-    0
+        let sim = Sim.Create(config)
+        sim.Reset()
+        McpServer.runMcpServer (Some sim)
+        0
+    | None ->
+        McpServer.runMcpServer None
+        0
 
 // ---- Debug command ----
 
@@ -411,7 +416,7 @@ let main argv =
             let dir = if rest.Length > 0 then rest.[0] else "."
             doDebugServer dir
         | "mcp-server" ->
-            let dir = if rest.Length > 0 then rest.[0] else "."
+            let dir = if rest.Length > 0 then Some rest.[0] else None
             doMcpServer dir
         | "debug" ->
             // Parse debug args: [dir] [--script <path>]

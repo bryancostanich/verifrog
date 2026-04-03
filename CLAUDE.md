@@ -29,7 +29,8 @@ The `verifrog-counter` MCP server provides direct simulation control. Use these 
 
 | Tool | What it does | When to use |
 |------|-------------|-------------|
-| `debug_status` | Cycle count, signal count, forces, checkpoints | First call — orient yourself |
+| `debug_open` | Open a verifrog project for debugging | First call — load a project before using other tools |
+| `debug_status` | Cycle count, signal count, forces, checkpoints | Orient yourself after opening a project |
 | `debug_signals` | List signal names (optional filter) | Discover what signals exist |
 | `debug_read` | Read signal values | Observe current state |
 | `debug_trace` | Record signals over N cycles | Watch how signals change over time |
@@ -44,7 +45,8 @@ The `verifrog-counter` MCP server provides direct simulation control. Use these 
 
 ### Debugging workflow
 
-1. **Orient**: `debug_status` and `debug_signals` to understand the design
+1. **Open**: `debug_open` with the project path (e.g., `samples/counter` or `khalkulo/verifrog`)
+2. **Orient**: `debug_status` and `debug_signals` to understand the design
 2. **Set up**: `debug_write` to configure inputs, `debug_step` to advance
 3. **Observe**: `debug_read` to check signal values
 4. **Checkpoint**: `debug_checkpoint` before exploring

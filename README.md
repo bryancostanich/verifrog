@@ -225,8 +225,9 @@ Verilator         — Your compiled RTL
 | **Verifrog.Runner** | Test infrastructure: SimFixture lifecycle, Iverilog backend, Expect assertions, test categories (Smoke/Unit/Parametric/Integration/Stress/Golden/Regression) |
 | **Verifrog.Vcd** | Standalone VCD waveform parser: parse files, query signals, value-at-time, transitions, timing analysis |
 | **Verifrog.Vcd.Cli** | Command-line VCD analysis tool with text and JSON output |
-| **verifrog CLI** | Build tool: `init` scaffolds a project, `build` compiles RTL through Verilator, `clean` removes artifacts |
+| **verifrog CLI** | Build tool: `init`, `build`, `clean`, `test`, `debug` (interactive REPL), `debug-server` (JSON), `mcp-server` (MCP for Claude) |
 | **libverifrog_sim** | Design-agnostic C++ shim: signal discovery, direct-pointer access, checkpoint via memcpy |
+| **VS Code Extension** | Syntax highlighting for `.verifrog` files, signals panel, checkpoints panel, debug toolbar (experimental) |
 
 ## Configuration
 

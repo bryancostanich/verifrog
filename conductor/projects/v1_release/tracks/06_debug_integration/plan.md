@@ -200,6 +200,25 @@ Extension lives in `src/Verifrog.VSCodeExtension/` with the other tools. Compile
   - "Save Checkpoint" / "Restore Checkpoint" buttons
   - Checkpoints panel (TreeView) with inline restore button
   - All added to `debug/toolBar` menu
+- [x] netcoredbg debug adapter (`verifrog` debug type):
+  - Custom `DebugAdapterDescriptorFactory` launches netcoredbg in `--interpreter=vscode` DAP mode
+  - `DebugConfigurationProvider` resolves `.fsproj` → DLL, symlinks native lib, sets env
+  - `netcoredbgPath` setting for custom install locations
+  - `onDebugResolve:verifrog` activation event
+
+### Known limitation: F# computation expression breakpoints
+
+**Line breakpoints inside Expecto `test "name" { ... }` blocks don't fire in DAP mode.**
+
+Investigated extensively with both vsdbg (Microsoft) and netcoredbg (Samsung):
+- **vsdbg**: Breakpoints on CE lines show solid red (appear valid) but never fire. `justMyCode: false` doesn't help. The F# compiler transforms CE bodies into closure classes (`simTests@20-3.Invoke()`), and vsdbg can't map source lines to the generated IL.
+- **netcoredbg DAP mode**: `setBreakpoints` returns `verified: true` for CE lines, but the breakpoints never fire at runtime. Same root cause — the DAP `setBreakpoints` protocol doesn't resolve closure-class sequence points correctly.
+- **netcoredbg CLI mode**: `break SimTests.fs:22` DOES work when set after modules are loaded (two-stage approach in Phase 2). The CLI `break` command uses a different internal resolution path than DAP `setBreakpoints`.
+- **Attempted workarounds**: Re-sending `setBreakpoints` after entry stop (verified: true but still doesn't fire), toggling breakpoints off/on (no effect), `stopAtEntry` + re-resolve (no effect). The issue is in how .NET debuggers map DAP breakpoint requests to F# CE-generated IL.
+
+**Working workaround**: Auto function breakpoint on `Verifrog.Sim.Sim.ReadOrFail` — fires on any test that reads a signal (virtually all of them). Breakpoints in non-CE F# code (regular functions, `Program.fs`) work fine with both debuggers.
+
+**Future fix path**: File issue with Samsung/netcoredbg for F# CE breakpoint support in DAP mode. Alternatively, implement a custom DAP proxy that translates `setBreakpoints` into CLI-style `break` commands after module load.
 
 ## Phase 4: Claude Integration
 

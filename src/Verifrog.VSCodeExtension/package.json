@@ -16,6 +16,9 @@
     "Programming Languages",
     "Debuggers"
   ],
+  "activationEvents": [
+    "onDebugResolve:verifrog"
+  ],
   "main": "./out/extension.js",
   "contributes": {
     "languages": [
@@ -150,12 +153,70 @@
           "type": "string",
           "default": "",
           "description": "Filter pattern for Signals panel (substring match)"
+        },
+        "verifrog.netcoredbgPath": {
+          "type": "string",
+          "default": "",
+          "description": "Path to netcoredbg binary. If empty, searches ~/.local/bin/netcoredbg/ and PATH."
         }
       }
     },
     "breakpoints": [
       {
         "language": "verifrog"
+      },
+      {
+        "language": "fsharp"
+      }
+    ],
+    "debuggers": [
+      {
+        "type": "verifrog",
+        "label": "Verifrog",
+        "languages": ["fsharp", "verifrog"],
+        "configurationAttributes": {
+          "launch": {
+            "required": ["program"],
+            "properties": {
+              "program": {
+                "type": "string",
+                "description": "Path to the test DLL"
+              },
+              "args": {
+                "type": "array",
+                "items": { "type": "string" },
+                "description": "Arguments for the test process"
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory"
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables"
+              },
+              "stopAtEntry": {
+                "type": "boolean",
+                "default": false,
+                "description": "Pause at program entry point"
+              }
+            }
+          }
+        },
+        "configurationSnippets": [
+          {
+            "label": "Verifrog: Debug Tests",
+            "description": "Debug Verifrog tests with netcoredbg (supports F# line breakpoints)",
+            "body": {
+              "name": "Debug Tests (Verifrog)",
+              "type": "verifrog",
+              "request": "launch",
+              "program": "^\"\\${workspaceFolder}/tests/Tests.fsproj\"",
+              "args": ["--sequenced"],
+              "cwd": "^\"\\${workspaceFolder}\""
+            }
+          }
+        ]
       }
     ]
   },

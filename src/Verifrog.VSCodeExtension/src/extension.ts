@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
 import { SignalsProvider, SignalItem } from './signals';
 import { CheckpointsProvider } from './checkpoints';
-import { DebugSession } from './debugSession';
 import { VerifrogDocumentSymbolProvider } from './symbolProvider';
+import { VerifrogDebugAdapterFactory, VerifrogDebugConfigProvider } from './debugAdapter';
 
-let debugSession: DebugSession | undefined;
 let signalsProvider: SignalsProvider;
 let checkpointsProvider: CheckpointsProvider;
 
@@ -29,26 +28,37 @@ export function activate(context: vscode.ExtensionContext) {
         treeDataProvider: checkpointsProvider,
     });
 
+    // Register netcoredbg-based debug adapter for the 'verifrog' debug type
+    context.subscriptions.push(
+        vscode.debug.registerDebugAdapterDescriptorFactory('verifrog', new VerifrogDebugAdapterFactory()),
+        vscode.debug.registerDebugConfigurationProvider('verifrog', new VerifrogDebugConfigProvider()),
+    );
+
     // Track debug session lifecycle
-    const debugListener = vscode.debug.onDidStartDebugSession(session => {
+    const debugStartListener = vscode.debug.onDidStartDebugSession(session => {
         vscode.commands.executeCommand('setContext', 'verifrog.sessionActive', true);
-    });
-    const debugEndListener = vscode.debug.onDidTerminateDebugSession(session => {
-        vscode.commands.executeCommand('setContext', 'verifrog.sessionActive', false);
-        debugSession = undefined;
-        signalsProvider.clear();
-        checkpointsProvider.clear();
+        // Auto-add function breakpoint on Sim.ReadOrFail.
+        // F# computation expression line breakpoints don't resolve correctly in
+        // either vsdbg or netcoredbg DAP mode, but function breakpoints work.
+        const bp = new vscode.FunctionBreakpoint('Verifrog.Sim.Sim.ReadOrFail');
+        vscode.debug.addBreakpoints([bp]);
     });
 
-    // Refresh signals when debugger pauses — use DebugAdapterTracker to catch 'stopped' events
+    const debugEndListener = vscode.debug.onDidTerminateDebugSession(() => {
+        vscode.commands.executeCommand('setContext', 'verifrog.sessionActive', false);
+        simFrameId = undefined;
+        signalsProvider.clear();
+        checkpointsProvider.clear();
+        vcdTracing = false;
+    });
+
+    // Refresh signals when debugger pauses — listen for DAP stopped events
     const trackerFactory = vscode.debug.registerDebugAdapterTrackerFactory('*', {
-        createDebugAdapterTracker(session: vscode.DebugSession) {
-            console.log('[verifrog] tracker created for session:', session.type, session.name);
+        createDebugAdapterTracker() {
             return {
                 onDidSendMessage(message: any) {
                     if (message.type === 'event' && message.event === 'stopped') {
                         const threadId = message.body?.threadId;
-                        console.log('[verifrog] stopped event on thread', threadId);
                         setTimeout(() => refreshSignals(threadId), 500);
                     }
                 },
@@ -67,7 +77,7 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.commands.registerCommand('verifrog.refreshSignals', () => refreshSignals()),
         vscode.commands.registerCommand('verifrog.addSignalWatch', addSignalWatch),
         vscode.commands.registerCommand('verifrog.setSignalWatchpoint', setSignalWatchpoint),
-        debugListener,
+        debugStartListener,
         debugEndListener,
         trackerFactory,
         signalsView,
@@ -75,36 +85,10 @@ export function activate(context: vscode.ExtensionContext) {
     );
 }
 
-export function deactivate() {
-    debugSession = undefined;
-}
-
-function isVerifrogSession(session: vscode.DebugSession): boolean {
-    return session.type === 'coreclr' &&
-        session.configuration?.env?.DYLD_LIBRARY_PATH !== undefined;
-}
+export function deactivate() {}
 
 // ---- Debug evaluation helpers ----
 
-async function evalExpression(expr: string): Promise<string | undefined> {
-    const session = vscode.debug.activeDebugSession;
-    if (!session) {
-        vscode.window.showWarningMessage('No active debug session');
-        return undefined;
-    }
-    try {
-        const response = await session.customRequest('evaluate', {
-            expression: expr,
-            context: 'watch',
-        });
-        return response.result;
-    } catch (e: any) {
-        return undefined;
-    }
-}
-
-// Cache the thread/frame where sim is in scope
-let simThreadId: number | undefined;
 let simFrameId: number | undefined;
 
 async function findSimFrame(session: vscode.DebugSession, hintThreadId?: number): Promise<number | undefined> {
@@ -112,7 +96,6 @@ async function findSimFrame(session: vscode.DebugSession, hintThreadId?: number)
         const threads = await session.customRequest('threads');
         if (!threads.threads?.length) { return undefined; }
 
-        // Try the hint thread first, then all threads
         const threadIds: number[] = [];
         if (hintThreadId) { threadIds.push(hintThreadId); }
         for (const t of threads.threads) {
@@ -128,49 +111,38 @@ async function findSimFrame(session: vscode.DebugSession, hintThreadId?: number)
                 });
                 if (!stack.stackFrames?.length) { continue; }
 
-                // Walk frames looking for one where we're inside a Sim method
-                // (where 'this' is a Verifrog.Sim.Sim instance)
                 for (const frame of stack.stackFrames) {
-                    // Quick check: does the frame name suggest it's in Sim code?
                     const name: string = frame.name || '';
-                    const inSimCode = name.includes('Verifrog.Sim.Sim') ||
-                                      name.includes('SimTests');
-                    if (!inSimCode) { continue; }
+                    if (!name.includes('Verifrog.Sim.Sim')) { continue; }
 
                     try {
-                        // Try evaluating 'this.Cycle' — works in Sim instance methods
                         const resp = await session.customRequest('evaluate', {
                             expression: 'this.Cycle',
                             frameId: frame.id,
                             context: 'watch',
                         });
                         if (resp.result && !resp.result.includes('error')) {
-                            console.log('[verifrog] found Sim context in thread', tid, 'frame', frame.id, frame.name);
-                            simThreadId = tid;
                             simFrameId = frame.id;
                             return frame.id;
                         }
                     } catch {
-                        // not a Sim frame — try next
+                        // not a Sim frame
                     }
                 }
             } catch {
-                // thread may have exited — skip
+                // thread may have exited
             }
         }
-        console.log('[verifrog] sim not found in any frame');
         return undefined;
-    } catch (e: any) {
-        console.error('[verifrog] findSimFrame error:', e?.message || e);
+    } catch {
         return undefined;
     }
 }
 
-async function evalExpressionInFrame(expr: string, hintThreadId?: number): Promise<string | undefined> {
+async function evalInSimFrame(expr: string, hintThreadId?: number): Promise<string | undefined> {
     const session = vscode.debug.activeDebugSession;
     if (!session) { return undefined; }
 
-    // Find the frame with sim if we don't have one cached
     if (!simFrameId) {
         await findSimFrame(session, hintThreadId);
     }
@@ -182,11 +154,8 @@ async function evalExpressionInFrame(expr: string, hintThreadId?: number): Promi
             frameId: simFrameId,
             context: 'watch',
         });
-        console.log('[verifrog] eval:', expr, '=>', response.result?.substring(0, 80));
         return response.result;
-    } catch (e: any) {
-        // Frame may be stale — clear cache and retry once
-        console.log('[verifrog] eval failed, clearing frame cache:', e?.message);
+    } catch {
         simFrameId = undefined;
         await findSimFrame(session, hintThreadId);
         if (!simFrameId) { return undefined; }
@@ -212,7 +181,6 @@ async function startDebugSession() {
         return;
     }
 
-    // Look for launch.json config or create one
     const launchConfig = vscode.workspace.getConfiguration('launch', workspaceFolder.uri);
     const configs = launchConfig.get<any[]>('configurations') || [];
     const verifrogConfig = configs.find(c => c.name?.includes('Debug Tests'));
@@ -236,9 +204,9 @@ async function stepCycles() {
     });
     if (!input) { return; }
 
-    const result = await evalExpressionInFrame(`sim.StepCycles(${input})`);
+    const result = await evalInSimFrame(`this.StepCycles(${input})`);
     if (result) {
-        vscode.window.showInformationMessage(`Stepped ${input} cycles (now at cycle ${result})`);
+        vscode.window.showInformationMessage(`Stepped ${input} cycles → cycle ${result}`);
     }
     refreshSignals();
 }
@@ -262,8 +230,8 @@ async function runUntilSignal() {
     });
     if (!maxCycles) { return; }
 
-    const result = await evalExpressionInFrame(
-        `sim.RunUntilSignal("${signal}", ${value}L, ${maxCycles})`
+    const result = await evalInSimFrame(
+        `this.RunUntilSignal("${signal}", ${value}L, ${maxCycles})`
     );
     if (result) {
         vscode.window.showInformationMessage(`RunUntil complete: ${result}`);
@@ -278,7 +246,7 @@ async function saveCheckpoint() {
     });
     if (!name) { return; }
 
-    const result = await evalExpressionInFrame(`sim.Save("${name}")`);
+    const result = await evalInSimFrame(`this.Save("${name}")`);
     if (result) {
         vscode.window.showInformationMessage(`Checkpoint "${name}" saved`);
         checkpointsProvider.addCheckpoint(name, result);
@@ -296,9 +264,9 @@ async function restoreCheckpoint(item?: any) {
     }
     if (!name) { return; }
 
-    const result = await evalExpressionInFrame(`sim.Restore("${name}")`);
+    const result = await evalInSimFrame(`this.Restore("${name}")`);
     if (result) {
-        vscode.window.showInformationMessage(`Restored checkpoint "${name}" (cycle ${result})`);
+        vscode.window.showInformationMessage(`Restored "${name}" → cycle ${result}`);
     }
     refreshSignals();
 }
@@ -310,17 +278,16 @@ async function toggleVcd() {
     const vcdPath = config.get<string>('vcdOutputPath', 'output/debug.vcd');
 
     if (!vcdTracing) {
-        const result = await evalExpressionInFrame(`sim.EnableVcd("${vcdPath}")`);
+        const result = await evalInSimFrame(`this.EnableVcd("${vcdPath}")`);
         if (result !== undefined) {
             vcdTracing = true;
             vscode.window.showInformationMessage(`VCD tracing started: ${vcdPath}`);
         }
     } else {
-        await evalExpressionInFrame(`sim.DisableVcd()`);
+        await evalInSimFrame('this.DisableVcd()');
         vcdTracing = false;
         vscode.window.showInformationMessage('VCD tracing stopped');
 
-        // Try to open in Surfer extension
         const surfer = vscode.extensions.getExtension('surfer-project.surfer');
         if (surfer) {
             const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
@@ -334,14 +301,10 @@ async function toggleVcd() {
 
 async function addSignalWatch(item?: SignalItem) {
     if (!item?.signalName) { return; }
-    // Add the signal as a debug watch expression
-    vscode.debug.addBreakpoints([]);  // no-op to ensure debug UI is open
-    // The best we can do is copy to clipboard and instruct user, or use debug.addWatchExpression if available
     const expr = `sim.ReadOrFail("${item.signalName}")`;
     await vscode.env.clipboard.writeText(expr);
     vscode.window.showInformationMessage(
-        `Copied watch expression to clipboard: ${expr}\n` +
-        `Paste it in the Watch panel (Ctrl+Shift+D → Watch → +)`
+        `Copied to clipboard: ${expr} — paste in the Watch panel`
     );
 }
 
@@ -350,9 +313,7 @@ async function setSignalWatchpoint(item?: SignalItem) {
     if (item?.signalName) {
         signal = item.signalName;
     } else {
-        signal = await vscode.window.showInputBox({
-            prompt: 'Signal name for watchpoint',
-        });
+        signal = await vscode.window.showInputBox({ prompt: 'Signal name for watchpoint' });
     }
     if (!signal) { return; }
 
@@ -362,79 +323,86 @@ async function setSignalWatchpoint(item?: SignalItem) {
     });
     if (value === undefined) { return; }
 
-    // Guide the user — we can't programmatically set conditional breakpoints
-    // on arbitrary lines, but we can show them how
     const condition = `sim.ReadOrFail("${signal}") == ${value}`;
     await vscode.env.clipboard.writeText(condition);
     vscode.window.showInformationMessage(
-        `Condition copied to clipboard: ${condition}\n` +
-        `Set a breakpoint on a sim.Step() line, right-click → Edit Breakpoint → paste condition.`
+        `Condition copied: ${condition} — paste as conditional breakpoint`
     );
 }
 
 // ---- Signals refresh ----
 
 async function refreshSignals(hintThreadId?: number) {
-    console.log('[verifrog] refreshSignals called, hintThread:', hintThreadId);
     const session = vscode.debug.activeDebugSession;
     if (!session) { return; }
 
-    // Clear frame cache on each refresh so we re-discover the right frame
     simFrameId = undefined;
 
-    // Get signal count first
-    const countStr = await evalExpressionInFrame('this.SignalCount', hintThreadId);
-    console.log('[verifrog] SignalCount:', countStr);
+    const countStr = await evalInSimFrame('this.SignalCount', hintThreadId);
     if (!countStr) { return; }
 
     const signalCount = parseInt(countStr, 10);
     if (isNaN(signalCount) || signalCount === 0) { return; }
 
-    // Get signal names by converting list to array and indexing
-    // vsdbg can't expand F# lists inline, so get as array
-    const listArr = await evalExpressionInFrame(
-        'System.Linq.Enumerable.ToArray(this.ListSignals())', hintThreadId
-    );
-    console.log('[verifrog] listArr:', listArr?.substring(0, 120));
-
-    // If array works, extract signal names by indexing
-    const signals: string[] = [];
     const limit = Math.min(signalCount, 50);
-    for (let i = 0; i < limit; i++) {
-        const name = await evalExpressionInFrame(
-            `System.Linq.Enumerable.ToArray(this.ListSignals())[${i}]`
-        );
-        if (name) {
-            // vsdbg wraps strings in quotes: "TOP.counter.count"
-            const clean = name.replace(/^"|"$/g, '');
-            signals.push(clean);
-        }
-    }
-    console.log('[verifrog] got', signals.length, 'signal names');
-
+    const signals = await getSignalNames(session, limit, hintThreadId);
     if (signals.length === 0) { return; }
 
-    // Read current values
     const signalValues: Array<{ name: string; value: string }> = [];
     for (const sig of signals) {
-        const val = await evalExpressionInFrame(`this.ReadOrFail("${sig}")`);
+        const val = await evalInSimFrame(`this.ReadOrFail("${sig}")`);
         signalValues.push({ name: sig, value: val || '?' });
     }
 
-    // Get cycle
-    const cycle = await evalExpressionInFrame('this.Cycle');
-
+    const cycle = await evalInSimFrame('this.Cycle');
     signalsProvider.update(signalValues, cycle || '?');
 }
 
-function parseSignalList(raw: string): string[] {
-    // netcoredbg returns F# list as nested structure like:
-    // {FSharpList<string>}: {head = "sig1", tail = {head = "sig2", ...}}
+async function getSignalNames(
+    session: vscode.DebugSession,
+    limit: number,
+    hintThreadId?: number,
+): Promise<string[]> {
+    if (!simFrameId) {
+        await findSimFrame(session, hintThreadId);
+    }
+    if (!simFrameId) { return []; }
+
+    // Try expanding array via variablesReference (single DAP call)
+    try {
+        const arrResult = await session.customRequest('evaluate', {
+            expression: 'System.Linq.Enumerable.ToArray(this.ListSignals())',
+            frameId: simFrameId,
+            context: 'watch',
+        });
+
+        if (arrResult.variablesReference && arrResult.variablesReference > 0) {
+            const vars = await session.customRequest('variables', {
+                variablesReference: arrResult.variablesReference,
+                start: 0,
+                count: limit,
+            });
+            const signals: string[] = [];
+            for (const v of vars.variables || []) {
+                if (v.value) {
+                    signals.push(v.value.replace(/^"|"$/g, ''));
+                }
+            }
+            if (signals.length > 0) { return signals; }
+        }
+    } catch {
+        // fall through to per-index approach
+    }
+
+    // Fallback: index one at a time
     const signals: string[] = [];
-    const headRegex = /head\s*=\s*"([^"]+)"/g;
-    let match;
-    while ((match = headRegex.exec(raw)) !== null) {
-        signals.push(match[1]);
+    for (let i = 0; i < limit; i++) {
+        const name = await evalInSimFrame(
+            `System.Linq.Enumerable.ToArray(this.ListSignals())[${i}]`
+        );
+        if (name) {
+            signals.push(name.replace(/^"|"$/g, ''));
+        }
     }
     return signals;
 }

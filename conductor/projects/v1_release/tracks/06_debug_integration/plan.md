@@ -224,14 +224,31 @@ Investigated extensively with both vsdbg (Microsoft) and netcoredbg (Samsung):
 
 Make interactive debugging a first-class capability for AI-assisted RTL debugging.
 
-- [ ] MCP tool or structured CLI that Claude can call tool-by-tool:
-  - `debug_start(project, test_name)` → session
-  - `debug_step(n)` → signal snapshot
-  - `debug_read(signals[])` → values
-  - `debug_checkpoint(name)` → ok
-  - `debug_restore(name)` → ok
-  - `debug_eval(expression)` → result
-  - `debug_quit()` → ok
+### Architecture
+
+Phase 2 used a bash/Python/netcoredbg chain: `verifrog debug-dap` → Python broker (`bin/verifrog-dap-session`) → netcoredbg → dotnet. This was a proof-of-concept to validate the workflow. Phase 4 replaces it with a proper architecture:
+
+- **Build on `Debugger.fs`** — the existing F# debugger REPL already has all sim commands (step, read, write, checkpoint, restore, force, release, signals, trace, run-until) and uses the `Sim` API directly. No netcoredbg middleman, no Python broker, no named FIFOs.
+- **Add JSON output mode** — each command returns structured JSON instead of human-readable text.
+- **Add server mode** — the F# process stays alive and speaks JSON-RPC or MCP over stdin/stdout. Claude calls it tool-by-tool without spawning a new process per command.
+- **Phase 2 bash/Python chain becomes legacy** — kept for backwards compat but the MCP server is the primary interface for AI-assisted debugging.
+
+### Tasks
+
+- [ ] Add `--json` flag to Debugger.fs commands — each command returns a JSON object with `status`, `cycle`, `data` fields
+- [ ] Add `verifrog debug-server` CLI command — launches Debugger.fs in server mode (reads JSON commands from stdin, writes JSON responses to stdout, stays alive)
+- [ ] MCP server wrapper — thin MCP protocol layer over the debug-server, exposing tools:
+  - `debug_start(project, test_name)` → `{ status, cycle, signal_count }`
+  - `debug_step(n)` → `{ cycle, signals: { name: value, ... } }`
+  - `debug_read(signals[])` → `{ cycle, values: { name: value, ... } }`
+  - `debug_write(signal, value)` → `{ status }`
+  - `debug_checkpoint(name)` → `{ status, cycle, name }`
+  - `debug_restore(name)` → `{ status, cycle }`
+  - `debug_signals(filter?)` → `{ signals: string[] }`
+  - `debug_force(signal, value)` → `{ status }`
+  - `debug_release(signal)` → `{ status }`
+  - `debug_eval(expression)` → `{ result }` (for advanced use)
+  - `debug_quit()` → `{ status }`
 - [ ] Each tool call returns structured JSON, not raw text
 - [ ] Auto-attach to failing tests: when a test fails, offer to debug it
 - [ ] Session replay: record debug commands → save as `.verifrog` script or F# test

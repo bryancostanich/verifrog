@@ -64,7 +64,8 @@ let private toolsJson = """[
   {"name":"debug_force","description":"Force a signal to a value (persists across clock cycles until released).","inputSchema":{"type":"object","properties":{"signal":{"type":"string","description":"Signal name"},"value":{"type":"integer","description":"Value to force"}},"required":["signal","value"]}},
   {"name":"debug_release","description":"Release a forced signal.","inputSchema":{"type":"object","properties":{"signal":{"type":"string","description":"Signal name"}},"required":["signal"]}},
   {"name":"debug_run_until","description":"Step the simulation until a signal reaches a target value, or max cycles exceeded.","inputSchema":{"type":"object","properties":{"signal":{"type":"string","description":"Signal name to watch"},"value":{"type":"integer","description":"Target value"},"maxCycles":{"type":"integer","description":"Maximum cycles to wait (default 10000)"}},"required":["signal","value"]}},
-  {"name":"debug_reset","description":"Reset the simulation to cycle 0.","inputSchema":{"type":"object","properties":{}}}
+  {"name":"debug_reset","description":"Reset the simulation to cycle 0.","inputSchema":{"type":"object","properties":{}}},
+  {"name":"debug_trace","description":"Record signal values over N clock cycles. Returns a table of cycle numbers and signal values — useful for observing how signals change over time.","inputSchema":{"type":"object","properties":{"signals":{"type":"array","items":{"type":"string"},"description":"Signal names to trace"},"n":{"type":"integer","description":"Number of cycles to trace (default 10)"}},"required":["signals"]}}
 ]"""
 
 let private toolsElement = JsonDocument.Parse(toolsJson).RootElement
@@ -153,6 +154,23 @@ let private callTool (sim: Sim) (name: string) (args: JsonElement) : obj =
     | "debug_reset" ->
         sim.Reset()
         toolResult $"Reset complete. Cycle: {sim.Cycle}." false
+
+    | "debug_trace" ->
+        let signalsEl = args.GetProperty("signals")
+        let signals = [| for i in 0 .. signalsEl.GetArrayLength() - 1 -> signalsEl.[i].GetString() |] |> Array.toList
+        let n = if args.TryGetProperty("n") |> fst then args.GetProperty("n").GetInt32() else 10
+        let trace = sim.Trace(signals, n)
+        let sb = System.Text.StringBuilder()
+        // Header
+        sb.Append("cycle") |> ignore
+        for s in signals do sb.Append($"\t{s}") |> ignore
+        sb.AppendLine() |> ignore
+        // Rows
+        for (cyc, vals) in trace do
+            sb.Append($"{cyc}") |> ignore
+            for v in vals do sb.Append($"\t{v}") |> ignore
+            sb.AppendLine() |> ignore
+        toolResult (sb.ToString().TrimEnd()) false
 
     | _ ->
         toolResult $"Unknown tool: {name}" true

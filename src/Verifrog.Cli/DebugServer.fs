@@ -176,6 +176,26 @@ let private handleCommand (sim: Sim) (doc: JsonDocument) : obj =
             let (found, cycle) = sim.RunUntilSignal(signal, value, maxCycles)
             {| status = "ok"; found = found; cycle = cycle; signal = signal; value = value |}
 
+    | "trace" ->
+        let signals =
+            if root.TryGetProperty("signals") |> fst then
+                let arr = root.GetProperty("signals")
+                [| for i in 0 .. arr.GetArrayLength() - 1 -> arr.[i].GetString() |] |> Array.toList
+            else []
+        let n =
+            if root.TryGetProperty("n") |> fst then root.GetProperty("n").GetInt32()
+            else 10
+        if signals.IsEmpty then
+            errorResponse "trace requires 'signals' field"
+        else
+            let trace = sim.Trace(signals, n)
+            let rows =
+                trace |> List.map (fun (cyc, vals) ->
+                    let pairs = List.zip signals vals
+                    let valMap = pairs |> List.map (fun (s, v) -> s, v) |> dict
+                    {| cycle = cyc; values = valMap |})
+            {| status = "ok"; rows = rows; signals = signals; cycles = n |}
+
     | "quit" ->
         {| status = "quit" |}
 

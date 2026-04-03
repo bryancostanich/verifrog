@@ -1,190 +1,145 @@
 # Debugging Verifrog Tests
 
-This guide covers how to use VS Code's built-in debugger with Verifrog test projects. Because Verifrog tests are standard .NET/F# projects, you get full debugger support — breakpoints, watch expressions, step-through, and conditional breakpoints — all wired into the simulation.
+Verifrog provides several ways to debug your RTL simulations, from an interactive command-line REPL to a JSON server for AI-assisted debugging. This guide covers all of them.
 
-## Prerequisites
+## Interactive Debugger (CLI)
 
-- [VS Code](https://code.visualstudio.com/) with the [C# Dev Kit](https://marketplace.visualstudio.com/items?itemName=ms-dotnettools.csdevkit) extension (provides the `coreclr` debugger, works with F#)
-- A Verifrog project with `verifrog build` already run (the native library must exist)
+The fastest way to debug. Launch with `verifrog debug`:
 
-## Quick Start
+```bash
+verifrog build                     # Build the Verilator model first
+verifrog debug                     # Start interactive session
+verifrog debug --script probe.txt  # Run a batch script
+```
 
-1. Run `verifrog init` in your project — it creates `.vscode/launch.json` automatically
-2. Edit `verifrog.toml` and add your RTL sources
-3. Run `verifrog build` to compile the Verilator model
-4. Open the project folder in VS Code
-5. Set a breakpoint in your test file
-6. Press F5 (or Run > Start Debugging) and select "Debug Tests"
+Once in the REPL, you have full control over the simulation:
 
-## launch.json Configuration
+```
+sim> write enable 1
+  enable <- 1
+sim> step 10
+sim> read count
+  count = 10
+sim> checkpoint before_overflow
+  Saved checkpoint 'before_overflow' at cycle 10
+sim> step 300
+sim> read overflow
+  overflow = 1
+sim> restore before_overflow
+  Restored checkpoint 'before_overflow' (cycle 10)
+sim> quit
+```
 
-`verifrog init` generates a `.vscode/launch.json` that looks like this:
+Full command list: `step`, `read`, `write`, `trace`, `watch`, `checkpoint`, `restore`, `force`, `release`, `run-until`, `signals`, `format`, `record`. Type `help` in the REPL for details.
+
+## JSON Debug Server
+
+For programmatic/AI-assisted debugging. Reads JSON commands from stdin, writes JSON responses to stdout:
+
+```bash
+verifrog debug-server              # Stays alive until quit
+```
+
+Each command is one JSON line, each response is one JSON line:
+
+```json
+{"cmd":"step","n":10}
+{"status":"ok","cycle":10}
+
+{"cmd":"read","signals":["count","enable"]}
+{"status":"ok","cycle":10,"values":{"count":10,"enable":1}}
+
+{"cmd":"checkpoint","name":"mid"}
+{"status":"ok","name":"mid","cycle":10}
+```
+
+Commands: `status`, `step`, `read`, `write`, `checkpoint`, `restore`, `signals`, `force`, `release`, `run-until`, `reset`, `quit`, `record`, `save-replay`.
+
+### Session Replay
+
+Record a debug session and export it as a `.verifrog` test:
+
+```json
+{"cmd":"record"}
+{"cmd":"write","signal":"enable","value":1}
+{"cmd":"step","n":10}
+{"cmd":"checkpoint","name":"mid"}
+{"cmd":"save-replay","path":"recorded.verifrog"}
+```
+
+This generates a `.verifrog` declarative test file you can run with `verifrog test`.
+
+## MCP Server (for Claude)
+
+An MCP (Model Context Protocol) server that exposes simulation tools directly to Claude:
+
+```bash
+verifrog mcp-server                # Speaks JSON-RPC 2.0 over stdio
+```
+
+Tools available: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
+
+To configure in Claude Code, add to your MCP settings:
 
 ```json
 {
-    "version": "0.2.0",
-    "configurations": [
-        {
-            "name": "Debug Tests",
-            "type": "coreclr",
-            "request": "launch",
-            "program": "dotnet",
-            "args": [
-                "run",
-                "--project", "${workspaceFolder}/tests/Tests.fsproj",
-                "--",
-                "--sequenced"
-            ],
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "DYLD_LIBRARY_PATH": "${workspaceFolder}/build",
-                "LD_LIBRARY_PATH": "${workspaceFolder}/build"
-            },
-            "console": "integratedTerminal",
-            "stopAtEntry": false
-        },
-        {
-            "name": "Debug Single Test",
-            "type": "coreclr",
-            "request": "launch",
-            "program": "dotnet",
-            "args": [
-                "run",
-                "--project", "${workspaceFolder}/tests/Tests.fsproj",
-                "--",
-                "--sequenced",
-                "--filter", "${input:testName}"
-            ],
-            "cwd": "${workspaceFolder}",
-            "env": {
-                "DYLD_LIBRARY_PATH": "${workspaceFolder}/build",
-                "LD_LIBRARY_PATH": "${workspaceFolder}/build"
-            },
-            "console": "integratedTerminal",
-            "stopAtEntry": false
-        }
-    ],
-    "inputs": [
-        {
-            "id": "testName",
-            "type": "promptString",
-            "description": "Test name (substring match)"
-        }
-    ]
+  "mcpServers": {
+    "verifrog": {
+      "command": "verifrog",
+      "args": ["mcp-server", "/path/to/your/project"]
+    }
+  }
 }
 ```
 
-**Key settings:**
+## VS Code Integration
 
-- **`DYLD_LIBRARY_PATH`** (macOS) / **`LD_LIBRARY_PATH`** (Linux) — Points to the `build/` directory containing `libverifrog_sim.dylib`/`.so`. Without this, P/Invoke calls to the native simulation library will fail.
-- **`--sequenced`** — Verilator's global state is not thread-safe. Tests must run sequentially.
-- **`--filter`** — Expecto's substring filter. Use "Debug Single Test" to isolate one test.
+### Running Tests
 
-## Watch Expressions for Signal Probing
+Running tests in VS Code works reliably. `verifrog init` generates a `.vscode/launch.json` that lets you run your test suite:
 
-When paused at a breakpoint inside a test, the `sim` variable (a `Verifrog.Sim.Sim` instance) gives you live access to the simulation. Add these as **Watch expressions** in the VS Code debug panel:
-
-### Read a signal value
-```
-sim.ReadOrFail("signal_name")
-```
-Returns the current value as `int64`. Replace `signal_name` with any signal in your design — hierarchical paths use dots (e.g., `"u_fsm.state"`).
-
-### Current cycle count
-```
-sim.Cycle
-```
-Shows how many clock cycles have elapsed since reset.
-
-### Discover signals
-```
-sim.ListSignals() |> Array.filter (fun s -> s.Contains("fsm"))
-```
-Find signals matching a substring. Useful when you don't know the exact hierarchical path.
-
-### Check active forces
-```
-sim.ForceCount
-```
-Returns the number of signals currently held by `Force()`. Nonzero means something is overriding normal simulation behavior.
-
-### Read multiple signals at once
-```
-["clk"; "reset"; "enable"; "count"] |> List.map (fun s -> s, sim.ReadOrFail(s))
-```
-Shows a list of (name, value) tuples in the Watch panel.
-
-## Conditional Breakpoints as Signal Watchpoints
-
-VS Code's conditional breakpoints let you implement hardware-style signal watchpoints: "pause when a signal reaches a specific value."
-
-### Setup
-
-1. Set a breakpoint on a line inside a loop or after `sim.Step()`:
-   ```fsharp
-   for _ in 1..1000 do
-       sim.Step(1)       // <-- set breakpoint here
-       ()
-   ```
-
-2. Right-click the breakpoint → **Edit Breakpoint** → **Expression**
-
-3. Enter a condition:
-   ```
-   sim.ReadOrFail("u_fsm.state") == 15
-   ```
-   This pauses only when the FSM enters the ERROR state (value 15).
-
-### Example conditions
-
-| Condition | What it catches |
-|---|---|
-| `sim.ReadOrFail("u_fsm.state") == 15` | FSM enters ERROR state |
-| `sim.ReadOrFail("overflow") == 1` | Overflow flag asserts |
-| `sim.Cycle > 5000UL` | Simulation runs past cycle 5000 |
-| `sim.ReadOrFail("count") > 200` | Counter exceeds threshold |
-| `sim.ReadOrFail("valid") == 1 && sim.ReadOrFail("ready") == 0` | Valid asserted but ready deasserted (backpressure) |
-
-### Stepping through cycles
-
-Once paused, use the **Debug Console** (not the Watch panel) to advance the simulation manually:
-
-```fsharp
-sim.Step(1)                          // Advance 1 cycle
-sim.ReadOrFail("count")              // Read a signal
-sim.Step(10)                         // Advance 10 cycles
-sim.ReadOrFail("u_fsm.state")       // Check FSM state
+```bash
+verifrog init my-project    # Generates .vscode/launch.json
+verifrog build my-project
+code my-project             # Open in VS Code, press F5 to run tests
 ```
 
-This gives you interactive, cycle-accurate control from the debugger.
+### VS Code Extension
 
-## Checkpoints in the Debugger
+The Verifrog VS Code extension (`src/Verifrog.VSCodeExtension/`) provides:
 
-Save and restore simulation state without restarting:
+- **Syntax highlighting** for `.verifrog` declarative test files
+- **Outline panel** with clean test names and categories
+- **Signals panel** showing live signal values when paused in a debug session
+- **Checkpoints panel** for save/restore
+- **Toolbar commands**: Step N Cycles, Run Until Signal, Toggle VCD Tracing
 
-```fsharp
-// In Debug Console:
-sim.SaveCheckpoint("before_bug")     // Snapshot current state
-sim.Step(100)                        // Run forward
-sim.ReadOrFail("error_flag")         // Observe the bug
-sim.RestoreCheckpoint("before_bug")  // Rewind to the saved state
-// Now try a different approach from the same point
-```
+### Debugging (Experimental)
 
-## Tips
+> **Warning**: VS Code step-through debugging of F# test code has significant limitations. The interactive CLI debugger (`verifrog debug`) and JSON/MCP servers are the recommended debugging interfaces.
 
-- **Build in Debug configuration**: `dotnet build -c Debug` ensures full debug symbols. `verifrog build` handles the native library; the .fsproj handles the managed side.
-- **Breakpoint on Expect failures**: Set a breakpoint on `Expect.signal` or `Expect.equal` calls to pause right before an assertion.
-- **Use `sim.ListSignals()`** in the Debug Console when you first start debugging a new design — it shows every signal the Verilator model exposes.
-- **VCD tracing**: If you need waveforms alongside debugging, add `sim.EnableVcd("debug.vcd")` before stepping, then open the VCD in Surfer or GTKWave after the session.
+**The problem**: Verifrog tests use Expecto's `test "name" { ... }` computation expressions. The F# compiler transforms these into closure classes, and neither Microsoft's debugger (vsdbg) nor Samsung's netcoredbg can reliably hit line breakpoints inside them via the DAP protocol. Breakpoints in regular F# functions work fine — only CE bodies are affected.
+
+**What works**:
+- Breakpoints in **regular F# code** (non-CE functions, `Program.fs`, `Sim.fs`, etc.)
+- **Function breakpoints** (e.g., break on `Verifrog.Sim.Sim.ReadOrFail`) — the extension auto-sets this
+- **Signal inspection** via the Signals panel when paused at any Sim method
+- **Watch expressions** like `sim.ReadOrFail("count")` and `sim.Cycle`
+
+**What doesn't work**:
+- Line breakpoints inside `test "name" { ... }` blocks — they appear valid (solid red dot) but never fire
+- This affects both vsdbg and netcoredbg in DAP mode
+- netcoredbg's CLI mode CAN hit these breakpoints (used by `verifrog debug-dap`), but DAP mode cannot
+
+**Recommended workflow**: Use the interactive debugger (`verifrog debug`) or JSON/MCP server for simulation debugging. Use VS Code for test execution, syntax highlighting, and signal inspection.
 
 ## Troubleshooting
 
 ### "Unable to find libverifrog_sim"
-The `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` in launch.json must point to the directory containing the built library. Run `verifrog build` first, then verify the path in launch.json matches `[test].output` in your `verifrog.toml`.
-
-### Breakpoint shows "No executable code"
-F# computation expressions (like `test "name" { ... }`) can confuse the debugger's line mapping. Move the breakpoint to a line with an actual expression (e.g., `sim.Step(10)` or `let count = ...`), not the opening brace or `test` keyword.
+Run `verifrog build` first. The `DYLD_LIBRARY_PATH` / `LD_LIBRARY_PATH` in launch.json must point to the directory containing the built library.
 
 ### Tests run but skip all
-If you see "0 tests run," the `--filter` argument might not match any test names. Remove the filter or check your test names with `dotnet run --project tests/ -- --list-tests`.
+Expecto uses `--filter-test-case` for substring matching, not `--filter`. Check your test names with `dotnet run --project tests/ -- --list-tests`.
+
+### Debug server exits immediately
+Make sure `verifrog.toml` exists and the sim library is built. The server emits a `{"status":"ready"}` message on startup — if you don't see it, check stderr for errors.

@@ -237,6 +237,34 @@ sim> quit
 
 See `help` in the debugger for the full command list (step, read, write, trace, watch, checkpoint, restore, force, release, run-until, signals, format, record).
 
+### `debug-server` — JSON debug server
+
+```bash
+verifrog debug-server [<project-dir>]
+```
+
+Launches a JSON debug server over stdin/stdout. The process stays alive and accepts one JSON command per line, returning one JSON response per line. Designed for programmatic/AI-assisted debugging.
+
+**Example:**
+
+```bash
+echo '{"cmd":"status"}' | verifrog debug-server
+# Output: {"cycle":0,"signalCount":27,"status":"ready"}
+#         {"checkpoints":[],"cycle":0,"forceCount":0,"signalCount":27,"status":"ok"}
+```
+
+Commands: `status`, `step`, `read`, `write`, `checkpoint`, `restore`, `signals`, `force`, `release`, `run-until`, `reset`, `quit`, `record`, `save-replay`.
+
+### `mcp-server` — MCP debug server
+
+```bash
+verifrog mcp-server [<project-dir>]
+```
+
+Launches an MCP (Model Context Protocol) server over stdin/stdout. Speaks JSON-RPC 2.0, exposing simulation tools that Claude and other MCP clients can call directly.
+
+Tools: `debug_status`, `debug_step`, `debug_read`, `debug_write`, `debug_signals`, `debug_checkpoint`, `debug_restore`, `debug_force`, `debug_release`, `debug_run_until`, `debug_reset`.
+
 ### `vcd` — Analyze VCD waveform files
 
 ```bash

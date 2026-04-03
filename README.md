@@ -270,25 +270,38 @@ See the full [Configuration Reference](docs/config-reference.md).
 
 ## Debugging
 
-Verifrog tests are standard .NET projects, so you get full VS Code debugger support — breakpoints, watch expressions, step-through, and conditional breakpoints — all wired into the live simulation.
+Multiple ways to debug your simulations:
+
+**Interactive REPL** — the fastest path. Step the simulation, read/write signals, set checkpoints, force values, all from the command line:
 
 ```bash
-verifrog init my-project    # Generates .vscode/launch.json automatically
-verifrog build my-project
-code my-project             # Open in VS Code, set a breakpoint, press F5
+verifrog debug
+```
+```
+sim> write enable 1
+sim> step 10
+sim> read count
+  count = 10
+sim> checkpoint before_overflow
+sim> step 300
+sim> restore before_overflow    # Back to cycle 10 instantly
 ```
 
-Once paused at a breakpoint, use **Watch expressions** to probe signals in real time:
+**JSON debug server** — for programmatic access. Reads JSON commands from stdin, writes JSON responses to stdout:
 
-```
-sim.ReadOrFail("u_fsm.state")                                    // Read any signal
-sim.Cycle                                                         // Current cycle count
-sim.ListSignals() |> Array.filter (fun s -> s.Contains("fsm"))   // Discover signals
+```bash
+echo '{"cmd":"read","signals":["count","enable"]}' | verifrog debug-server
 ```
 
-Use **conditional breakpoints** as signal watchpoints — "break when `sim.ReadOrFail("u_fsm.state") == 15`" pauses only when the FSM enters the ERROR state.
+**MCP server** — exposes simulation tools directly to Claude:
 
-See the full [Debug Guide](docs/debug-guide.md) for setup, watch expression patterns, and tips.
+```bash
+verifrog mcp-server    # Speaks MCP protocol (JSON-RPC 2.0 over stdio)
+```
+
+**VS Code extension** — syntax highlighting for `.verifrog` files, signals panel, test running. VS Code step-through debugging of F# test code is experimental and has [known limitations](docs/debug-guide.md#debugging-experimental).
+
+See the full [Debug Guide](docs/debug-guide.md) for all options.
 
 ## Documentation
 

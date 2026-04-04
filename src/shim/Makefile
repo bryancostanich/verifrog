@@ -47,7 +47,7 @@ VINC := $(shell $(VERILATOR) --getenv VERILATOR_ROOT)/include
 
 # C++ compiler — auto-detect: prefer clang++, fall back to g++
 CXX ?= $(shell command -v clang++ >/dev/null 2>&1 && echo clang++ || echo g++)
-CXXFLAGS := -std=c++17 -O2 -fPIC \
+CXXFLAGS := -std=c++17 -O1 -fPIC \
             -DVL_USER_STOP \
             -I$(VDIR) -I$(VINC) -I$(VINC)/vltstd -I$(BUILD_DIR)
 

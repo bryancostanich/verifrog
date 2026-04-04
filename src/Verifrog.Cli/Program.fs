@@ -248,7 +248,7 @@ let private doBuild (projectDir: string) =
             config.Verilator.Flags |> String.concat " "
 
         let makeArgs =
-            $"-f {makefile} sim-lib TOP={config.Design.Top} RTL_SOURCES=\"{rtlSources}\" BUILD_DIR={buildDir}"
+            $"-f {makefile} sim-lib TOP={config.Design.Top} RTL_SOURCES=\"{rtlSources}\" BUILD_DIR={buildDir} VFLAGS_EXTRA=\"{verilatorFlags}\""
 
         printfn "  Verilating %s..." config.Design.Top
         let (rc, stdout, stderr) = runCmd "make" makeArgs projectRoot

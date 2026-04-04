@@ -36,10 +36,11 @@ ifndef RTL_SOURCES
 endif
 
 # Verilator flags
-VFLAGS := --cc --top-module $(TOP) --trace --vpi \
-          --public-flat-rw \
+# VFLAGS_EXTRA can be passed from verifrog.toml [verilator] flags
+VFLAGS := --cc --top-module $(TOP) --vpi \
+          --public-flat-rw -O3 \
           -Wno-WIDTHEXPAND -Wno-WIDTHTRUNC -Wno-PINCONNECTEMPTY -Wno-UNUSEDSIGNAL \
-          --Mdir $(VDIR)
+          --Mdir $(VDIR) $(VFLAGS_EXTRA)
 
 # Verilator include path
 VINC := $(shell $(VERILATOR) --getenv VERILATOR_ROOT)/include

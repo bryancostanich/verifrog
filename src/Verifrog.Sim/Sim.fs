@@ -148,12 +148,18 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
     /// Current cycle count (since last reset)
     member _.Cycle = sim_get_cycle(ctx)
 
-    /// Read a signal value by hierarchical name
+    /// Read a signal value by hierarchical name.
+    /// Tries DUT-prefixed path first, falls back to unprefixed for wrapper-level signals.
     member _.Read(name: string) : SimResult<int64> =
         let resolved = resolveName name
         let mutable value = 0L
         let rc = sim_read(ctx, resolved, &value)
         if rc = 0 then Ok value
+        elif dutPrefix <> "" && resolved <> name then
+            // Fallback: try unprefixed (wrapper-level signal like u_ext_sram_mem.mem[])
+            let rc2 = sim_read(ctx, name, &value)
+            if rc2 = 0 then Ok value
+            else Error $"Signal not found: {name}"
         else Error $"Signal not found: {name}"
 
     /// Read a signal, returning the value or raising an exception
@@ -162,11 +168,16 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
         | Ok v -> v
         | Error msg -> failwith msg
 
-    /// Write a signal value by hierarchical name
+    /// Write a signal value by hierarchical name.
+    /// Tries DUT-prefixed path first, falls back to unprefixed for wrapper-level signals.
     member _.Write(name: string, value: int64) : SimResult<unit> =
         let resolved = resolveName name
         let rc = sim_write(ctx, resolved, value)
         if rc = 0 then Ok ()
+        elif dutPrefix <> "" && resolved <> name then
+            let rc2 = sim_write(ctx, name, value)
+            if rc2 = 0 then Ok ()
+            else Error $"Signal not found: {name}"
         else Error $"Signal not found: {name}"
 
     /// Get signal bit width (or -1 if not found)

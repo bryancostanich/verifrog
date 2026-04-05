@@ -340,15 +340,15 @@ let validate (tests: DeclTest list) (sim: Sim) : string list =
     let knownMemories = sim.MemoryNames |> Set.ofList
 
     let isKnownSignal (s: string) =
-        // Exact match
-        knownSignalSet.Contains(s)
-        // Register name from TOML
-        || sim.RegisterNames |> List.contains s
         // Array-indexed paths (contain []) — skip validation.
         // Verilator handles array indexing at runtime; the signal list only
-        // contains base array names, not individual elements. Runtime errors
-        // will catch bad paths with clear messages.
-        || s.Contains("[")
+        // contains base array names, not individual elements.
+        s.Contains("[")
+        // Register name from TOML
+        || sim.RegisterNames |> List.contains s
+        // Use SignalBits which applies DUT instance prefix automatically.
+        // This handles sim_wrapper configurations where signal paths are prefixed.
+        || sim.SignalBits(s) >= 0
 
     let signalErrors =
         tests
@@ -381,8 +381,11 @@ let private validationTest (tests: DeclTest list) (createSim: unit -> Sim) : Tes
 /// Convert a DeclTest to an Expecto Test
 let private toExpectoTest (test: DeclTest) : Test =
     testCase test.Name (fun () ->
-        use sim = Sim.Create()
         Sim.SuppressDisplay(true)
+        use sim =
+            match Config.findToml (System.IO.Directory.GetCurrentDirectory()) with
+            | Some tomlPath -> Sim.Create(Config.parse tomlPath)
+            | None -> Sim.Create()
         sim.Reset()
         for step in test.Steps do
             executeStep sim step test.File test.Line)

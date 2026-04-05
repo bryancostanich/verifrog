@@ -34,6 +34,12 @@ type RegisterConfig = {
 type DesignConfig = {
     Top: string
     Sources: string list
+    /// Optional sim wrapper module (used as Verilator top instead of Top)
+    SimWrapper: string option
+    /// Extra sources for the sim wrapper (compiled alongside design sources)
+    SimSources: string list
+    /// DUT instance name inside the sim wrapper (for auto-prefixing signal paths)
+    DutInstance: string option
 }
 
 /// Iverilog backend configuration from verifrog.toml [iverilog]
@@ -105,7 +111,10 @@ let private parseDesign (root: TomlTable) : DesignConfig =
     | None -> failwith "Missing [design] section in verifrog.toml"
     | Some t ->
         { Top = getString t "top"
-          Sources = getStringList t "sources" }
+          Sources = getStringList t "sources"
+          SimWrapper = tryGetString t "sim_wrapper"
+          SimSources = getStringList t "sim_sources"
+          DutInstance = tryGetString t "dut_instance" }
 
 let private parseVerilator (root: TomlTable) : VerilatorConfig =
     match getTable root "verilator" with
@@ -179,7 +188,9 @@ let parse (tomlPath: string) : VerifrogConfig =
     let iverilog = parseIverilog root
     let test = parseTest root
 
-    { Design = { design with Sources = design.Sources |> List.map (resolvePath baseDir) }
+    { Design = { design with
+                    Sources = design.Sources |> List.map (resolvePath baseDir)
+                    SimSources = design.SimSources |> List.map (resolvePath baseDir) }
       Verilator = parseVerilator root
       Iverilog = iverilog |> Option.map (fun iv ->
         { iv with

@@ -240,17 +240,21 @@ let private doBuild (projectDir: string) =
         1
     | Some makefile ->
         // Sources are already absolute paths from Config.parse
-        let rtlSources =
-            config.Design.Sources
-            |> String.concat " "
+        let allSources =
+            config.Design.Sources @ config.Design.SimSources
+        let rtlSources = allSources |> String.concat " "
+
+        // Use sim_wrapper as Verilator top module if set, otherwise use top
+        let verilatorTop =
+            config.Design.SimWrapper |> Option.defaultValue config.Design.Top
 
         let verilatorFlags =
             config.Verilator.Flags |> String.concat " "
 
         let makeArgs =
-            $"-f {makefile} sim-lib TOP={config.Design.Top} RTL_SOURCES=\"{rtlSources}\" BUILD_DIR={buildDir} VFLAGS_EXTRA=\"{verilatorFlags}\""
+            $"-f {makefile} sim-lib TOP={verilatorTop} RTL_SOURCES=\"{rtlSources}\" BUILD_DIR={buildDir} VFLAGS_EXTRA=\"{verilatorFlags}\""
 
-        printfn "  Verilating %s..." config.Design.Top
+        printfn "  Verilating %s..." verilatorTop
         let (rc, stdout, stderr) = runCmd "make" makeArgs projectRoot
 
         if rc = 0 then

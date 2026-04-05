@@ -72,17 +72,42 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
     let memories = Dictionary<string, MemoryAccessor>()
     let registers = Dictionary<string, RegisterAccessor>()
 
+    // DUT instance prefix for sim wrapper support.
+    // When set, signal paths are prefixed (e.g., "u_fsm.state" -> "u_dut.u_fsm.state").
+    // If the prefixed path doesn't resolve, falls back to unprefixed (for wrapper-level signals).
+    let dutPrefix =
+        config
+        |> Option.bind (fun c -> c.Design.DutInstance)
+        |> Option.map (fun p -> p + ".")
+        |> Option.defaultValue ""
+
+    /// Resolve a signal name by applying the DUT instance prefix.
+    /// Always prefixes unless the name already starts with the prefix.
+    /// For wrapper-level signals (e.g., u_ext_sram.mem[0]), use the full path directly.
+    let resolveName (name: string) =
+        if dutPrefix = "" || name.StartsWith(dutPrefix) then
+            name
+        else
+            dutPrefix + name
+
     do
-        // Build memory accessors from config
+        // Build memory accessors from config, applying DUT prefix to paths
         match config with
         | Some cfg ->
-            for mem in cfg.Memories do
+            let prefixedMemories =
+                cfg.Memories |> List.map (fun mem ->
+                    if dutPrefix = "" then mem
+                    else { mem with Path = dutPrefix + mem.Path })
+            for mem in prefixedMemories do
                 memories.[mem.Name] <- MemoryAccessor(ctx, mem)
-            // Build register accessors from config
+            // Build register accessors from config, applying DUT prefix
             match cfg.Registers with
             | Some regCfg ->
-                for entry in regCfg.Map do
-                    registers.[entry.Name] <- RegisterAccessor(ctx, regCfg, entry)
+                let prefixedRegCfg =
+                    if dutPrefix = "" then regCfg
+                    else { regCfg with Path = dutPrefix + regCfg.Path }
+                for entry in prefixedRegCfg.Map do
+                    registers.[entry.Name] <- RegisterAccessor(ctx, prefixedRegCfg, entry)
             | None -> ()
         | None -> ()
 
@@ -125,8 +150,9 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
 
     /// Read a signal value by hierarchical name
     member _.Read(name: string) : SimResult<int64> =
+        let resolved = resolveName name
         let mutable value = 0L
-        let rc = sim_read(ctx, name, &value)
+        let rc = sim_read(ctx, resolved, &value)
         if rc = 0 then Ok value
         else Error $"Signal not found: {name}"
 
@@ -138,13 +164,15 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
 
     /// Write a signal value by hierarchical name
     member _.Write(name: string, value: int64) : SimResult<unit> =
-        let rc = sim_write(ctx, name, value)
+        let resolved = resolveName name
+        let rc = sim_write(ctx, resolved, value)
         if rc = 0 then Ok ()
         else Error $"Signal not found: {name}"
 
     /// Get signal bit width (or -1 if not found)
     member _.SignalBits(name: string) : int =
-        sim_signal_bits(ctx, name)
+        let resolved = resolveName name
+        sim_signal_bits(ctx, resolved)
 
     /// Get total number of registered signals
     member _.SignalCount = sim_signal_count(ctx)
@@ -219,13 +247,15 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
 
     /// Force a signal to a value. Persists across steps until released.
     member _.Force(name: string, value: int64) : SimResult<unit> =
-        let rc = sim_force(ctx, name, value)
+        let resolved = resolveName name
+        let rc = sim_force(ctx, resolved, value)
         if rc = 0 then Ok ()
         else Error $"Force failed (signal not found): {name}"
 
     /// Release a forced signal
     member _.Release(name: string) : SimResult<unit> =
-        let rc = sim_release(ctx, name)
+        let resolved = resolveName name
+        let rc = sim_release(ctx, resolved)
         if rc = 0 then Ok ()
         else Error $"Release failed (signal not forced): {name}"
 

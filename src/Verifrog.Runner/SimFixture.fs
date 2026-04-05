@@ -17,10 +17,15 @@ type Level =
 module SimFixture =
 
     /// Create a fresh simulation instance, reset it, and return it.
-    /// No TOML config — use for simple designs.
+    /// Auto-discovers verifrog.toml from the current directory for config
+    /// (signal path prefixing, memory/register accessors). Falls back to
+    /// no-config if not found.
     let create () : Sim =
         Sim.SuppressDisplay(true)
-        let sim = Sim.Create()
+        let sim =
+            match Config.findToml (Directory.GetCurrentDirectory()) with
+            | Some tomlPath -> Sim.Create(Config.parse tomlPath)
+            | None -> Sim.Create()
         sim.Reset()
         sim
 

@@ -141,16 +141,10 @@ static void register_signals(SimContext* ctx) {
             void* datap = var_ptr.datap();
             if (!datap) continue;
 
-            // entBits() and isSigned() were added in Verilator 5.034.
-            // For older versions, derive bits from packed range and default unsigned.
-#if VERILATOR_VERSION_INTEGER >= 5034000
             int bits = var_ptr.entBits();
-            bool is_signed = var_ptr.isSigned();
-#else
-            int bits = var_ptr.packed().elements();
-            bool is_signed = false;
-#endif
             if (bits <= 0) bits = 1;
+
+            bool is_signed = var_ptr.isSigned();
 
             // Store pointer to the VerilatedVar for array indexing support
             const VerilatedVar* varp = &var_ptr;

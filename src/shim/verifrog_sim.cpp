@@ -264,6 +264,10 @@ SimContext* sim_create() {
 void sim_destroy(SimContext* ctx) {
     std::lock_guard<std::recursive_mutex> lock(g_sim_mutex);
     if (!ctx) return;
+    // Restore threadContextp so scope destructors erase from the correct
+    // VerilatedContext.  Without this, a second model's freed context may
+    // still be the thread-local pointer, causing use-after-free on teardown.
+    Verilated::threadContextp(ctx->vctx);
     delete ctx->model;
     delete ctx->vctx;
     delete ctx;

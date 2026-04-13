@@ -3,6 +3,7 @@ module Verifrog.Runner.Iverilog
 open System
 open System.Diagnostics
 open System.IO
+open System.Threading
 open Verifrog.Sim.Config
 
 /// Result of running an iverilog simulation
@@ -35,6 +36,47 @@ let private runProcess (cmd: string) (args: string) (workDir: string) (timeoutMs
     else
         { ExitCode = proc.ExitCode; Stdout = stdout; Stderr = stderr; ElapsedMs = sw.ElapsedMilliseconds }
 
+/// Build a .vvp filename that encodes parameter overrides so different
+/// configurations get separate cached binaries.
+let private vvpFileName (testbenchName: string) (overrides: (string * string) list) : string =
+    if overrides.IsEmpty then
+        $"{testbenchName}.vvp"
+    else
+        let suffix = overrides |> List.map (fun (k, v) -> $"{k}_{v}") |> String.concat "_"
+        $"{testbenchName}__{suffix}.vvp"
+
+/// Check if the .vvp file is up to date: exists and is newer than all source files.
+let private isUpToDate (vvpFile: string) (sourceFiles: string list) : bool =
+    if not (File.Exists(vvpFile)) then false
+    else
+        let vvpTime = File.GetLastWriteTimeUtc(vvpFile)
+        sourceFiles |> List.forall (fun src ->
+            if File.Exists(src) then File.GetLastWriteTimeUtc(src) <= vvpTime
+            else true)  // missing source file will cause compile error anyway
+
+/// Acquire a file lock for compilation dedup. Returns IDisposable to release.
+/// If another process is already compiling, waits up to timeoutMs.
+let private acquireCompileLock (vvpFile: string) (timeoutMs: int) : IDisposable option =
+    let lockFile = vvpFile + ".lock"
+    try
+        // FileShare.None ensures exclusive access
+        let fs = new FileStream(lockFile, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None)
+        Some (fs :> IDisposable)
+    with
+    | :? IOException ->
+        // Another process holds the lock — wait and poll
+        let sw = Stopwatch.StartNew()
+        let mutable acquired = false
+        let mutable result : IDisposable option = None
+        while not acquired && sw.ElapsedMilliseconds < int64 timeoutMs do
+            Thread.Sleep(200)
+            try
+                let fs = new FileStream(lockFile, FileMode.OpenOrCreate, FileAccess.Write, FileShare.None)
+                result <- Some (fs :> IDisposable)
+                acquired <- true
+            with :? IOException -> ()
+        result
+
 /// Compile and run a Verilog testbench with iverilog/vvp.
 ///
 /// projectRoot: root directory of the project
@@ -66,7 +108,10 @@ let run (projectRoot: string) (config: VerifrogConfig) (testbenchName: string) (
         { ExitCode = -1; Stdout = ""; Stderr = $"Testbench not found: {tbFile}"; ElapsedMs = 0 }
     else
 
-    let vvpFile = Path.Combine(scratchDir, $"{testbenchName}.vvp")
+    let vvpFile = Path.Combine(scratchDir, vvpFileName testbenchName overrides)
+
+    // All source files for cache invalidation
+    let allSources = config.Design.Sources @ [tbFile] @ iverilogCfg.Models @ extraSources
 
     // Sources are already absolute paths from Config.parse
     let rtlSources = config.Design.Sources |> String.concat " "
@@ -81,11 +126,29 @@ let run (projectRoot: string) (config: VerifrogConfig) (testbenchName: string) (
     let extraSourceStr = extraSources |> String.concat " "
     let iverilogCmd = $"iverilog -o {vvpFile} {paramFlags} {rtlSources} {tbFile} {modelSources} {extraSourceStr}"
 
-    // Compile
-    let compileResult = runProcess "bash" $"-c \"{iverilogCmd}\"" projectRoot 60_000
-    if compileResult.ExitCode <> 0 then
-        { compileResult with Stderr = $"iverilog compilation failed:\n{compileResult.Stderr}" }
-    else
+    // Compile with caching and dedup lock
+    let compileError =
+        if isUpToDate vvpFile allSources then
+            None  // Cache hit — skip compilation
+        else
+            // Acquire lock to prevent parallel duplicate compilations
+            let lockOpt = acquireCompileLock vvpFile 120_000
+            try
+                // Re-check after acquiring lock (another process may have compiled)
+                if isUpToDate vvpFile allSources then
+                    None
+                else
+                    let compileResult = runProcess "bash" $"-c \"{iverilogCmd}\"" projectRoot 60_000
+                    if compileResult.ExitCode <> 0 then
+                        Some { compileResult with Stderr = $"iverilog compilation failed:\n{compileResult.Stderr}" }
+                    else
+                        None
+            finally
+                lockOpt |> Option.iter (fun l -> l.Dispose())
+
+    match compileError with
+    | Some err -> err
+    | None ->
 
     // Run (use testOutputDir as cwd so $dumpfile VCDs land there)
     let sw = Stopwatch.StartNew()

@@ -73,18 +73,20 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
     let registers = Dictionary<string, RegisterAccessor>()
 
     // DUT instance prefix for sim wrapper support.
-    // When set, signal paths are prefixed (e.g., "u_fsm.state" -> "u_dut.u_fsm.state").
-    // If the prefixed path doesn't resolve, falls back to unprefixed (for wrapper-level signals).
+    // When set, lookups try the bare name first (top-level / wrapper signals),
+    // then fall back to the prefixed form (DUT-internal signals).
+    // See `Read` / `Write` / `Force` / `Release` / `SignalBits` below for the
+    // bare-first lookup order.
     let dutPrefix =
         config
         |> Option.bind (fun c -> c.Design.DutInstance)
         |> Option.map (fun p -> p + ".")
         |> Option.defaultValue ""
 
-    /// Resolve a signal name by applying the DUT instance prefix.
-    /// Always prefixes unless the name already starts with the prefix.
-    /// For wrapper-level signals (e.g., u_ext_sram.mem[0]), use the full path directly.
-    let resolveName (name: string) =
+    /// Produce the prefixed form of a name (DUT-internal fallback).
+    /// If the name already starts with the prefix or no prefix is configured,
+    /// returns the name unchanged.
+    let prefixedName (name: string) =
         if dutPrefix = "" || name.StartsWith(dutPrefix) then
             name
         else
@@ -149,18 +151,23 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
     member _.Cycle = sim_get_cycle(ctx)
 
     /// Read a signal value by hierarchical name.
-    /// Tries DUT-prefixed path first, falls back to unprefixed for wrapper-level signals.
+    /// Tries the bare name first (top-level / wrapper signals), then falls back
+    /// to the DUT-prefixed form (DUT-internal signals).
     member _.Read(name: string) : SimResult<int64> =
-        let resolved = resolveName name
         let mutable value = 0L
-        let rc = sim_read(ctx, resolved, &value)
+        // Try bare name first — top-level wrapper signals (clk, rst_n, pads)
+        // are registered under their literal name in the shim's friendly map.
+        let rc = sim_read(ctx, name, &value)
         if rc = 0 then Ok value
-        elif dutPrefix <> "" && resolved <> name then
-            // Fallback: try unprefixed (wrapper-level signal like u_ext_sram_mem.mem[])
-            let rc2 = sim_read(ctx, name, &value)
-            if rc2 = 0 then Ok value
+        else
+            let prefixed = prefixedName name
+            if prefixed <> name then
+                // Fallback: try prefixed form for DUT-internal helpers
+                // (e.g. caller passed "u_regfile.X" expecting auto-prefix).
+                let rc2 = sim_read(ctx, prefixed, &value)
+                if rc2 = 0 then Ok value
+                else Error $"Signal not found: {name}"
             else Error $"Signal not found: {name}"
-        else Error $"Signal not found: {name}"
 
     /// Read a signal, returning the value or raising an exception
     member this.ReadOrFail(name: string) : int64 =
@@ -169,21 +176,28 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
         | Error msg -> failwith msg
 
     /// Write a signal value by hierarchical name.
-    /// Tries DUT-prefixed path first, falls back to unprefixed for wrapper-level signals.
+    /// Tries the bare name first (top-level / wrapper signals), then falls back
+    /// to the DUT-prefixed form (DUT-internal signals).
     member _.Write(name: string, value: int64) : SimResult<unit> =
-        let resolved = resolveName name
-        let rc = sim_write(ctx, resolved, value)
+        let rc = sim_write(ctx, name, value)
         if rc = 0 then Ok ()
-        elif dutPrefix <> "" && resolved <> name then
-            let rc2 = sim_write(ctx, name, value)
-            if rc2 = 0 then Ok ()
+        else
+            let prefixed = prefixedName name
+            if prefixed <> name then
+                let rc2 = sim_write(ctx, prefixed, value)
+                if rc2 = 0 then Ok ()
+                else Error $"Signal not found: {name}"
             else Error $"Signal not found: {name}"
-        else Error $"Signal not found: {name}"
 
-    /// Get signal bit width (or -1 if not found)
+    /// Get signal bit width (or -1 if not found).
+    /// Tries bare name first, falls back to prefixed form.
     member _.SignalBits(name: string) : int =
-        let resolved = resolveName name
-        sim_signal_bits(ctx, resolved)
+        let bare = sim_signal_bits(ctx, name)
+        if bare >= 0 then bare
+        else
+            let prefixed = prefixedName name
+            if prefixed <> name then sim_signal_bits(ctx, prefixed)
+            else bare
 
     /// Get total number of registered signals
     member _.SignalCount = sim_signal_count(ctx)
@@ -257,18 +271,30 @@ type Sim private (ctx: nativeint, config: VerifrogConfig option) =
     // ---- Signal forcing ----
 
     /// Force a signal to a value. Persists across steps until released.
+    /// Tries bare name first, falls back to prefixed form.
     member _.Force(name: string, value: int64) : SimResult<unit> =
-        let resolved = resolveName name
-        let rc = sim_force(ctx, resolved, value)
+        let rc = sim_force(ctx, name, value)
         if rc = 0 then Ok ()
-        else Error $"Force failed (signal not found): {name}"
+        else
+            let prefixed = prefixedName name
+            if prefixed <> name then
+                let rc2 = sim_force(ctx, prefixed, value)
+                if rc2 = 0 then Ok ()
+                else Error $"Force failed (signal not found): {name}"
+            else Error $"Force failed (signal not found): {name}"
 
-    /// Release a forced signal
+    /// Release a forced signal.
+    /// Tries bare name first, falls back to prefixed form.
     member _.Release(name: string) : SimResult<unit> =
-        let resolved = resolveName name
-        let rc = sim_release(ctx, resolved)
+        let rc = sim_release(ctx, name)
         if rc = 0 then Ok ()
-        else Error $"Release failed (signal not forced): {name}"
+        else
+            let prefixed = prefixedName name
+            if prefixed <> name then
+                let rc2 = sim_release(ctx, prefixed)
+                if rc2 = 0 then Ok ()
+                else Error $"Release failed (signal not forced): {name}"
+            else Error $"Release failed (signal not forced): {name}"
 
     /// Release all forced signals
     member _.ReleaseAll() = sim_release_all(ctx)

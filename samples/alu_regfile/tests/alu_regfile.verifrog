@@ -1,0 +1,112 @@
+# alu_regfile sample — declarative tests
+# Exercises the register write port and the 1-cycle ALU.
+#
+# ┌─────────────────────────────────────────────────────────────────────────┐
+# │ GROUND TRUTH — DO NOT WEAKEN THESE TESTS.                                 │
+# │                                                                           │
+# │ Every `expect` below is the mathematically correct answer, verified by    │
+# │ hand. These assertions define the SPEC. If a test fails, the RTL under    │
+# │ test (rtl/alu_regfile.v) is wrong — NOT the test.                         │
+# │                                                                           │
+# │ Do NOT "fix" a failure by changing the expected value, deleting the       │
+# │ test, marking it ignored, or loosening the comparison. The only valid     │
+# │ fix for a failing assertion is to correct the RTL so the hardware         │
+# │ produces the specified result. Editing this file to make a red test go    │
+# │ green without fixing the design is a defect, not a fix.                    │
+# └─────────────────────────────────────────────────────────────────────────┘
+#
+# Convention for every ALU test:
+#   1. Load operands into the register file via the write port.
+#   2. Select operands with rd_addr_a / rd_addr_b and the op with alu_op.
+#   3. Pulse alu_start, step one cycle for the 1-cycle latency.
+#   4. expect alu_result.
+
+test "reset clears registers" [Smoke]:
+  expect rd_data_a == 0
+  expect rd_data_b == 0
+
+test "write then read register" [Smoke]:
+  write wr_addr = 2
+  write wr_data = 5
+  write wr_en = 1
+  step 1
+  write wr_en = 0
+  write rd_addr_a = 2
+  expect rd_data_a == 5
+
+test "ADD R2 + R3" [Unit]:
+  # R2 = 5, R3 = 3  ->  5 + 3 = 8
+  write wr_addr = 2
+  write wr_data = 5
+  write wr_en = 1
+  step 1
+  write wr_addr = 3
+  write wr_data = 3
+  step 1
+  write wr_en = 0
+  write rd_addr_a = 2
+  write rd_addr_b = 3
+  write alu_op = 0
+  write alu_start = 1
+  step 1
+  write alu_start = 0
+  expect alu_result == 8
+
+test "SUB R2 - R3" [Unit]:
+  # GROUND TRUTH: 5 - 3 = 2. This is basic arithmetic and is not negotiable.
+  # If alu_result comes back 254 (0xFE), that is the 8-bit two's-complement of
+  # -2, i.e. the ALU computed 3 - 5 = -2 -> operands are SWAPPED in the RTL.
+  # The correct fix is in rtl/alu_regfile.v (compute rd_data_a - rd_data_b),
+  # NOT changing the "== 2" below.
+  # R2 = 5, R3 = 3  ->  5 - 3 = 2
+  write wr_addr = 2
+  write wr_data = 5
+  write wr_en = 1
+  step 1
+  write wr_addr = 3
+  write wr_data = 3
+  step 1
+  write wr_en = 0
+  write rd_addr_a = 2
+  write rd_addr_b = 3
+  write alu_op = 1
+  write alu_start = 1
+  step 1
+  write alu_start = 0
+  expect alu_result == 2
+
+test "AND R2 & R3" [Unit]:
+  # R2 = 0x0F, R3 = 0x3C  ->  0x0C
+  write wr_addr = 2
+  write wr_data = 0x0F
+  write wr_en = 1
+  step 1
+  write wr_addr = 3
+  write wr_data = 0x3C
+  step 1
+  write wr_en = 0
+  write rd_addr_a = 2
+  write rd_addr_b = 3
+  write alu_op = 2
+  write alu_start = 1
+  step 1
+  write alu_start = 0
+  expect alu_result == 0x0C
+
+test "OR R2 | R3" [Unit]:
+  # R2 = 0x0F, R3 = 0x30  ->  0x3F
+  write wr_addr = 2
+  write wr_data = 0x0F
+  write wr_en = 1
+  step 1
+  write wr_addr = 3
+  write wr_data = 0x30
+  step 1
+  write wr_en = 0
+  write rd_addr_a = 2
+  write rd_addr_b = 3
+  write alu_op = 3
+  write alu_start = 1
+  step 1
+  write alu_start = 0
+  expect alu_result == 0x3F

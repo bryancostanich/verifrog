@@ -1,0 +1,44 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <GenerateProgramFile>false</GenerateProgramFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="DeclarativeLoader.fs" />
+    <Compile Include="Program.fs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../../../src/Verifrog.Sim/Verifrog.Sim.fsproj" />
+    <ProjectReference Include="../../../src/Verifrog.Runner/Verifrog.Runner.fsproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Expecto" Version="10.2.1" />
+    <PackageReference Include="YoloDev.Expecto.TestSdk" Version="0.14.3" />
+  </ItemGroup>
+
+  <!--
+    Copy the Verilator-compiled native model next to the test binary so the
+    .NET runtime's dlopen finds it no matter how the tests are launched
+    (dotnet run, dotnet test, IDE, or the bin/verifrog wrapper). Without this
+    the loader searches only the runtime/output dirs and fails with
+    "unable to load libverifrog_sim" before any simulation runs.
+  -->
+  <ItemGroup>
+    <NativeSimLib Include="../build/libverifrog_sim.dylib" />
+    <NativeSimLib Include="../build/libverifrog_sim.so" />
+    <NativeSimLib Include="../build/verifrog_sim.dll" />
+  </ItemGroup>
+
+  <Target Name="CopyNativeSimLib" AfterTargets="Build;Publish">
+    <Copy SourceFiles="@(NativeSimLib)"
+          DestinationFolder="$(OutDir)"
+          SkipUnchangedFiles="true"
+          Condition="Exists('%(NativeSimLib.Identity)')" />
+  </Target>
+
+</Project>

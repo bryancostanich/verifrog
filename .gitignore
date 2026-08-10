@@ -29,3 +29,6 @@ test-results.md
 # macOS
 .DS_Store
 generated/
+
+# Published CLI/MCP binaries (build artifacts, not source)
+bin/publish/

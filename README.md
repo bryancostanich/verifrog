@@ -4,6 +4,12 @@ An open-source Verilog/SystemVerilog testing and debugging framework in F#. Driv
 
 **Why Verifrog?** Traditional Verilog testbenches are tedious to write and limited in expressiveness. UVM is powerful but heavyweight. Verifrog gives you the speed of Verilator with the ergonomics of a modern programming language — F# with Expecto — so you can write tests that read like specifications, and interactively debug your hardware with tools that don't exist in traditional HDL workflows.
 
+## Demo
+
+Verifrog ships an MCP server, so an AI agent can drive your RTL simulation directly — opening a design, stepping cycles, reading and forcing signals, and checkpointing state to test hypotheses. In this demo, a failing test leads the agent to investigate, checkpoint, force signals, and pinpoint a bug in the ALU's SUB operation:
+
+https://github.com/bryancostanich/verifrog/releases/download/demo-assets/verifrog-debugging-demo.mp4
+
 ### Testing
 
 Write structured, readable tests in F# that compile and run your RTL through Verilator. Read and write any signal, memory, or register by name. Assert values with clear failure messages. Run Verilator and Icarus Verilog tests side-by-side under a single `dotnet test`.

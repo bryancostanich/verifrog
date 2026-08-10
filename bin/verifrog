@@ -186,9 +186,28 @@ cmd_test() {
 
     local lib_path="$build_dir/libverifrog_sim.$lib_ext"
 
-    # Auto-build if library doesn't exist
+    # Auto-build if the library is missing OR stale (any RTL source / config
+    # newer than the compiled model). Without the staleness check, editing the
+    # RTL and re-running `verifrog test` would silently load the cached model
+    # and report the OLD behavior — a footgun that makes an RTL fix look like
+    # it didn't work until a manual rebuild.
+    local needs_build=false
     if [[ ! -f "$lib_path" ]]; then
         echo "Library not found at $lib_path — building..."
+        needs_build=true
+    else
+        local newer
+        # Any .v/.sv under the project or the toml itself newer than the dylib?
+        newer=$(find "$project_root" \
+                    \( -name '*.v' -o -name '*.sv' -o -name 'verifrog.toml' \) \
+                    -newer "$lib_path" \
+                    -not -path "$build_dir/*" 2>/dev/null | head -1)
+        if [[ -n "$newer" ]]; then
+            echo "Sources changed since last build ($newer) — rebuilding model..."
+            needs_build=true
+        fi
+    fi
+    if [[ "$needs_build" == true ]]; then
         cmd_build "$dir"
     fi
 

@@ -8,7 +8,7 @@ An open-source Verilog/SystemVerilog testing and debugging framework in F#. Driv
 
 Verifrog ships an MCP server, so an AI agent can drive your RTL simulation directly — opening a design, stepping cycles, reading and forcing signals, and checkpointing state to test hypotheses. In this demo, a failing test leads the agent to investigate, checkpoint, force signals, and pinpoint a bug in the ALU's SUB operation:
 
-https://github.com/user-attachments/assets/725183c6-8038-44d9-aa8a-0390ac1fe519
+https://github.com/user-attachments/assets/6c8fa955-d576-48c3-82b0-dfcb1dbaa2bd
 
 ### Testing
 

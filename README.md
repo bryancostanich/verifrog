@@ -1,14 +1,16 @@
 # Verifrog
 
-An open-source Verilog/SystemVerilog testing and debugging framework in F#. Drive your RTL designs through [Verilator](https://verilator.org) and [Icarus Verilog](http://iverilog.icarus.com/) with type-safe, structured access to signals, memories, and registers — all from `dotnet test`.
+An open-source Verilog/SystemVerilog testing and debugging framework in F#. Drive your RTL through [Verilator](https://verilator.org) and [Icarus Verilog](http://iverilog.icarus.com/) with type-safe, structured access to every signal, memory, and register — and let an AI agent debug it for you over MCP.
 
-**Why Verifrog?** Traditional Verilog testbenches are tedious to write and limited in expressiveness. UVM is powerful but heavyweight. Verifrog gives you the speed of Verilator with the ergonomics of a modern programming language — F# with Expecto — so you can write tests that read like specifications, and interactively debug your hardware with tools that don't exist in traditional HDL workflows.
+Traditional Verilog testbenches are tedious and inexpressive; UVM is powerful but heavyweight. Verifrog gives you Verilator's speed with the ergonomics of a modern language — tests that read like specifications, checkpoint/restore and fork-based hypothesis testing, and an MCP server so an agent can open your design, step it, force signals, and pinpoint a bug on its own.
 
 ## Demo
 
 Verifrog ships an MCP server, so an AI agent can drive your RTL simulation directly — opening a design, stepping cycles, reading and forcing signals, and checkpointing state to test hypotheses. In this demo, a failing test leads the agent to investigate, checkpoint, force signals, and pinpoint a bug in the ALU's SUB operation:
 
 https://github.com/user-attachments/assets/6c8fa955-d576-48c3-82b0-dfcb1dbaa2bd
+
+## Features
 
 ### Testing
 
@@ -29,6 +31,21 @@ Verifrog's simulation model is fully controllable from code — you can pause at
 - **Tracing and RunUntil** — Record signal values over a window of cycles (`Trace`), or advance the simulation until a condition is met (`RunUntil`, `RunUntilSignal`). No more guessing how many cycles to step.
 
 - **VCD waveform analysis** — Parse simulation waveform dumps and query them programmatically: find when a signal first changed, count pulses, check timing relationships, verify FSM state coverage. Available as both a library (`Verifrog.Vcd`) for use in tests and a command-line tool (`verifrog-vcd`) for quick analysis.
+
+## How it compares
+
+|  | Verifrog | Raw Verilator (C++) | cocotb | UVM |
+|---|---|---|---|---|
+| **Testbench language** | F# (Expecto) + declarative `.verifrog` | C++ | Python | SystemVerilog |
+| **Simulation engine** | Verilator / Icarus | Verilator | any VPI simulator | any SV simulator |
+| **Checkpoint / restore** | Built in (state snapshot in µs) | Hand-rolled | No | No |
+| **Fork / compare / sweep** | Built in | Hand-rolled | No | Manual |
+| **Signal forcing** | By name, held across cycles | Manual pointer writes | `.value` assignment | `uvm_hdl_force` |
+| **Named memory / register access** | TOML-driven, by name | Manual | Manual | Config DB / RAL |
+| **AI agent debugging (MCP)** | Built in | No | No | No |
+| **Learning curve** | Low | Medium | Low | High |
+
+Verifrog leans on Verilator for raw speed, so it inherits Verilator's two-state limitation — for timing-accurate, four-state (X/Z) testbenches it can also drive Icarus Verilog under the same test suite. If you need cycle-accurate X-propagation as the default, a VPI-based flow like cocotb may fit better; if you want fast checkpoint/fork-driven debugging with an agent in the loop, that's where Verifrog is aimed.
 
 ## Quick Start
 
